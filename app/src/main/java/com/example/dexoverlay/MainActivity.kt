@@ -72,20 +72,21 @@ class MainActivity : Activity() {
 
         // --- Quickhack Card 1: HUD Scale Setting ---
         val currentScale = prefs.getFloat(OverlayService.KEY_SCALE, 1.0f)
-        val scaleCard = createQuickhackCard("QUICKHACK #1: SYSTEM HUD SCALE", "READY")
+        val scaleCard = createQuickhackCard("SYSTEM HUD SCALE", "READY", "1")
 
         val scaleLabel = TextView(this).apply {
             text = "HUD Size Scale: ${String.format("%.2f", currentScale)}x"
-            textSize = 14f
+            textSize = 13f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
-            setPadding(0, 8, 0, 8)
+            setPadding(24, 8, 24, 8)
         }
         scaleCard.addView(scaleLabel)
 
         val seekBar = SeekBar(this).apply {
             max = 75 // 0 to 75 mapped to 0.75x -> 1.50x
             progress = ((currentScale - 0.75f) * 100).toInt()
+            setPadding(24, 0, 24, 16)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     val newScale = 0.75f + (progress / 100f)
@@ -110,11 +111,11 @@ class MainActivity : Activity() {
 
         // --- Quickhack Card 2: Corner Position ---
         val currentPos = prefs.getString(OverlayService.KEY_POSITION, OverlayService.POS_TOP_RIGHT)
-        val posCard = createQuickhackCard("QUICKHACK #2: DISPLAY CORNER POSITION", "TRACEABLE")
+        val posCard = createQuickhackCard("DISPLAY CORNER POSITION", "TRACEABLE", "2")
 
         val posGroup = RadioGroup(this).apply {
             orientation = RadioGroup.HORIZONTAL
-            setPadding(0, 8, 0, 8)
+            setPadding(24, 8, 24, 16)
         }
 
         val rbTopRight = RadioButton(this).apply {
@@ -151,7 +152,12 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.parseColor("#151D2A"))
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
+            setPadding(0, 16, 0, 16)
             setOnClickListener { checkAndRequestOverlayPermission() }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 16, 0, 0) }
         }
         rootLayout.addView(btnPermission)
 
@@ -165,7 +171,12 @@ class MainActivity : Activity() {
             setTextColor(Color.BLACK)
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, 16, 0, 16)
             setOnClickListener { startOverlayService() }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 16, 0, 0) }
         }
         rootLayout.addView(btnStart)
 
@@ -178,7 +189,12 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, 16, 0, 16)
             setOnClickListener { stopOverlayService() }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         }
         rootLayout.addView(btnStop)
 
@@ -189,41 +205,101 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun createQuickhackCard(title: String, tag: String): LinearLayout {
-        return LinearLayout(this).apply {
+    private fun createQuickhackCard(title: String, tag: String, ramCost: String = "0"): LinearLayout {
+        val cyan = Color.parseColor("#00E5FF")
+        val darkBlue = Color.parseColor("#0A121E")
+
+        val cardContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(16, 12, 16, 12)
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#0F1420"))
-                setStroke(2, Color.parseColor("#243247"))
-                cornerRadius = 4f
-            }
-
-            val headerRow = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-
-            val titleView = TextView(context).apply {
-                text = title
-                textSize = 13f
-                setTextColor(Color.WHITE)
-                typeface = Typeface.MONOSPACE
-                setTypeface(typeface, Typeface.BOLD)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            headerRow.addView(titleView)
-
-            val tagView = TextView(context).apply {
-                text = "[$tag]"
-                textSize = 11f
-                setTextColor(Color.parseColor("#00E5FF"))
-                typeface = Typeface.MONOSPACE
-            }
-            headerRow.addView(tagView)
-
-            addView(headerRow)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 8, 0, 8) }
         }
+
+        val mainRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, 0)
+        }
+
+        // Left Content Box (Notched Look simulated with border)
+        val contentBox = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(24, 16, 24, 16)
+            background = GradientDrawable().apply {
+                setColor(darkBlue)
+                setStroke(2, cyan)
+                cornerRadius = 2f
+            }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val textStack = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val titleView = TextView(this).apply {
+            text = title.uppercase()
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        textStack.addView(titleView)
+
+        val tagBox = TextView(this).apply {
+            text = tag.uppercase()
+            textSize = 9f
+            setTextColor(cyan)
+            typeface = Typeface.MONOSPACE
+            background = GradientDrawable().apply {
+                setStroke(1, cyan)
+                cornerRadius = 2f
+            }
+            setPadding(8, 2, 8, 2)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 4, 0, 0) }
+        }
+        textStack.addView(tagBox)
+        contentBox.addView(textStack)
+
+        // RAM Cost
+        val ramView = TextView(this).apply {
+            text = ramCost
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.MONOSPACE
+            setPadding(16, 0, 16, 0)
+        }
+        contentBox.addView(ramView)
+
+        // Far Right Icon Box
+        val iconView = TextView(this).apply {
+            text = "⚡"
+            textSize = 16f
+            setTextColor(cyan)
+            gravity = Gravity.CENTER
+            setPadding(16, 16, 16, 16)
+            background = GradientDrawable().apply {
+                setStroke(2, cyan)
+                cornerRadius = 2f
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            ).apply { setMargins(8, 0, 0, 0) }
+        }
+
+        mainRow.addView(contentBox)
+        mainRow.addView(iconView)
+        cardContainer.addView(mainRow)
+
+        return cardContainer
     }
 
     private fun checkAndRequestOverlayPermission() {

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CYBERDECK v2.077 // Cyberpunk HUD Simulator</title>
+    <title>CYBERDECK v2.077 // Cyberpunk Traced Directions Simulator</title>
     <style>
         * {
             box-sizing: border-box;
@@ -84,8 +84,8 @@
             object-fit: cover;
         }
 
-        /* --- Pure Minimalist Cyberpunk 2077 Time HUD --- */
-        .cyberpunk-time-hud {
+        /* --- Pure Transparent Cyberpunk Traced Directions HUD --- */
+        .cyberpunk-traced-hud {
             position: absolute;
             top: 35px;
             right: 35px;
@@ -93,6 +93,13 @@
             user-select: none;
             transition: all 0.2s ease;
             background: transparent; /* 100% Transparent for XREAL Micro-OLED */
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+        }
+
+        .hud-row {
             display: flex;
             align-items: center;
             gap: 12px;
@@ -113,15 +120,24 @@
             letter-spacing: 1px;
         }
 
-        /* Cyberpunk Cyberdeck Controls Panel */
+        .hud-nav-trace {
+            color: #FF0055; /* Neon Pink Vector Accent */
+            font-size: 14px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-shadow: 0 0 10px rgba(255, 0, 85, 0.9);
+            display: none;
+        }
+
+        /* Cyberdeck Controls Panel */
         .cyberdeck-panel {
             flex: 1;
             min-width: 320px;
             background: #080A0F;
             padding: 22px;
             border-radius: 12px;
-            border: 2px solid #00E5FF;
-            box-shadow: 0 0 25px rgba(0, 229, 255, 0.2);
+            border: 2px solid #FF0055;
+            box-shadow: 0 0 25px rgba(255, 0, 85, 0.2);
             height: fit-content;
         }
 
@@ -156,29 +172,12 @@
 
         .quickhack-tag {
             font-size: 11px;
-            color: #00E5FF;
+            color: #FF0055;
         }
 
-        .select-input {
-            width: 100%;
-            padding: 8px 12px;
-            border-radius: 4px;
-            background: #060910;
-            color: #FFE600;
-            border: 1px solid #243247;
-            font-weight: 700;
-            margin-top: 6px;
-        }
-
-        .range-slider {
-            width: 100%;
-            accent-color: #FFE600;
-            margin-top: 8px;
-        }
-
-        .btn-start {
-            background: #FFE600;
-            color: #000;
+        .btn-toggle-nav {
+            background: #FF0055;
+            color: #fff;
             border: none;
             padding: 12px;
             border-radius: 4px;
@@ -186,72 +185,52 @@
             cursor: pointer;
             width: 100%;
             letter-spacing: 1px;
-            margin-bottom: 8px;
-        }
-
-        .btn-stop {
-            background: #FF0055;
-            color: #fff;
-            border: none;
-            padding: 10px;
-            border-radius: 4px;
-            font-weight: 700;
-            cursor: pointer;
-            width: 100%;
         }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>⚡ CYBERDECK v2.077 // XREAL 1s HUD</h1>
-        <p>AVAILABLE QUICKHACKS & OVERLAY CONFIGURATIONS</p>
+        <h1>⚡ CYBERDECK v2.077 // TRACED DIRECTIONS</h1>
+        <p>TRANSPARENT VECTOR NAV & TIME OVERLAY SIMULATOR</p>
     </header>
 
     <div class="main-container">
         <!-- XREAL Display Simulator -->
         <div class="xreal-display" id="xrealDisplay">
-            <div class="xreal-badge">XREAL 1s • CYBERDECK HUD</div>
+            <div class="xreal-badge">XREAL 1s • TRACED VECTOR HUD</div>
             
             <video class="video-simulator" autoplay loop muted poster="https://images.unsplash.com/photo-1534447677768-be436bb09401?w=1200">
                 <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
             </video>
 
-            <!-- Cyberpunk HUD Overlay -->
-            <div class="cyberpunk-time-hud" id="hudWidget">
-                <div class="hud-clock" id="clock">17:37:38</div>
-                <div class="hud-battery" id="battery">▮▮▮▮▮ 88%</div>
+            <!-- Cyberpunk Transparent Traced Vector HUD -->
+            <div class="cyberpunk-traced-hud" id="hudWidget">
+                <div class="hud-row">
+                    <div class="hud-clock" id="clock">18:20:24</div>
+                    <div class="hud-battery" id="battery">▮▮▮▮▮ 88%</div>
+                </div>
+                <div class="hud-nav-trace" id="navTrace">🠺 200m • MAIN ST TOWARDS CITY CENTER</div>
             </div>
         </div>
 
-        <!-- Cyberdeck Phone Menu Panel -->
+        <!-- Cyberdeck Controls Panel -->
         <div class="cyberdeck-panel">
-            <h2>CYBERDECK CONFIGURATOR</h2>
+            <h2>TRACED DIRECTIONS CONFIGURATOR</h2>
 
-            <!-- Quickhack #1: Scale -->
             <div class="quickhack-card">
                 <div class="quickhack-header">
-                    <div class="quickhack-title">QUICKHACK #1: SYSTEM HUD SCALE</div>
-                    <div class="quickhack-tag">[READY]</div>
+                    <div class="quickhack-title">QUICKHACK: MAPS NAV TRACE SIMULATOR</div>
+                    <div class="quickhack-tag">[ACTIVE]</div>
                 </div>
-                <label style="font-size:12px; color:#94a3b8;">HUD Size Scale: <span id="scaleVal" style="color:#FFE600; font-weight:bold;">1.00x</span></label>
-                <input type="range" class="range-slider" min="75" max="150" value="100" oninput="updateScale(this.value)">
+                <p style="font-size:12px; color:#94a3b8; margin-bottom:12px;">Toggle simulated Google Maps active turn-by-turn navigation vector trace:</p>
+                <button class="btn-toggle-nav" onclick="toggleSimulatedNav()">🪧 TOGGLE GOOGLE MAPS VECTOR TRACE</button>
             </div>
 
-            <!-- Quickhack #2: Position -->
-            <div class="quickhack-card">
-                <div class="quickhack-header">
-                    <div class="quickhack-title">QUICKHACK #2: CORNER POSITION</div>
-                    <div class="quickhack-tag">[TRACEABLE]</div>
-                </div>
-                <select class="select-input" onchange="setCornerPosition(this.value)">
-                    <option value="right">[ TOP-RIGHT CORNER ]</option>
-                    <option value="left">[ TOP-LEFT CORNER ]</option>
-                </select>
+            <div style="background:#060910; padding:12px; border-radius:8px; font-size:12px; color:#94a3b8; margin-top:16px; line-height:1.5;">
+                <span style="color:#FF0055; font-weight:bold;">100% Transparent AR Vector Note:</span><br>
+                Notice how directional arrows (<code style="color:#FF0055;">🠺 🠸 🠹</code>) and street names float seamlessly in your vision without any dark rectangular containers!
             </div>
-
-            <button class="btn-start">⚡ [ EXECUTE: START CYBERPUNK HUD ]</button>
-            <button class="btn-stop">⏹️ [ TERMINATE: STOP HUD ]</button>
         </div>
     </div>
 
@@ -264,28 +243,12 @@
         setInterval(updateClock, 1000);
         updateClock();
 
-        let currentScale = 1.0;
+        let isNavActive = false;
 
-        function updateScale(val) {
-            currentScale = val / 100;
-            document.getElementById('scaleVal').innerText = currentScale.toFixed(2) + 'x';
-            
-            const clock = document.getElementById('clock');
-            const battery = document.getElementById('battery');
-
-            clock.style.fontSize = (24 * currentScale) + 'px';
-            battery.style.fontSize = (12 * currentScale) + 'px';
-        }
-
-        function setCornerPosition(pos) {
-            const hud = document.getElementById('hudWidget');
-            if (pos === 'left') {
-                hud.style.left = (35 * currentScale) + 'px';
-                hud.style.right = 'auto';
-            } else {
-                hud.style.right = (35 * currentScale) + 'px';
-                hud.style.left = 'auto';
-            }
+        function toggleSimulatedNav() {
+            isNavActive = !isNavActive;
+            const navTrace = document.getElementById('navTrace');
+            navTrace.style.display = isNavActive ? 'block' : 'none';
         }
     </script>
 </body>

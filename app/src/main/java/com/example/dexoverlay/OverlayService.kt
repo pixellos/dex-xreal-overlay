@@ -32,6 +32,9 @@ class OverlayService : Service() {
     private var overlayView: View? = null
     private var clockTextView: TextView? = null
     private var batteryTextView: TextView? = null
+    private var navTraceTextView: TextView? = null
+
+    private var isNavActive = false
 
     private val handler = Handler(Looper.getMainLooper())
     private val clockRunnable = object : Runnable {
@@ -41,7 +44,7 @@ class OverlayService : Service() {
         }
     }
 
-    // Battery Receiver for 5-segment Cyberpunk battery bars
+    // Battery Monitor Receiver
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
@@ -53,7 +56,7 @@ class OverlayService : Service() {
 
                 if (level >= 0 && scale > 0) {
                     val batteryPct = (level * 100 / scale.toFloat()).toInt()
-                    val segments = (batteryPct / 20).coerceIn(0, 5) // 5 total bar segments
+                    val segments = (batteryPct / 20).coerceIn(0, 5)
 
                     val bars = StringBuilder()
                     for (i in 1..5) {
@@ -64,11 +67,31 @@ class OverlayService : Service() {
                     batteryTextView?.text = "$prefix $bars $batteryPct%"
                     batteryTextView?.setTextColor(
                         when {
-                            isCharging -> Color.parseColor("#00FF66") // Neon Charging Green
-                            batteryPct <= 20 -> Color.parseColor("#FF0055") // Neon Low Red
-                            else -> Color.parseColor("#00E5FF") // Cyberpunk Cyan
+                            isCharging -> Color.parseColor("#00FF66")
+                            batteryPct <= 20 -> Color.parseColor("#FF0055")
+                            else -> Color.parseColor("#00E5FF")
                         }
                     )
+                }
+            }
+        }
+    }
+
+    // Navigation Listener Receiver for Cyberpunk Traced Directions
+    private val navReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == MapsNavListenerService.ACTION_NAV_UPDATE) {
+                val active = intent.getBooleanExtra(MapsNavListenerService.EXTRA_IS_NAV_ACTIVE, false)
+                val arrow = intent.getStringExtra(MapsNavListenerService.EXTRA_NAV_ARROW) ?: "🠹"
+                val title = intent.getStringExtra(MapsNavListenerService.EXTRA_NAV_TITLE) ?: ""
+                val text = intent.getStringExtra(MapsNavListenerService.EXTRA_NAV_TEXT) ?: ""
+
+                isNavActive = active
+                if (active && (title.isNotEmpty() || text.isNotEmpty())) {
+                    navTraceTextView?.text = "$arrow $title • $text"
+                    navTraceTextView?.visibility = View.VISIBLE
+                } else {
+                    navTraceTextView?.visibility = View.GONE
                 }
             }
         }
@@ -78,6 +101,7 @@ class OverlayService : Service() {
         super.onCreate()
         startForegroundServiceNotification()
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        registerReceiver(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE))
         setupOverlayWindow()
     }
 
@@ -108,40 +132,61 @@ class OverlayService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = gravityCorner
-            x = (40 * hudScale).toInt() // Scale corner padding
-            y = (40 * hudScale).toInt() // Scale corner padding
+            x = (40 * hudScale).toInt()
+            y = (40 * hudScale).toInt()
         }
 
-        // Ultra-Minimal Container (100% Pure Transparent Background for XREAL Micro-OLED)
+        // 100% Pure Transparent Root Container for XREAL AR Micro-OLED
         val container = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.VERTICAL
+            gravity = if (position == POS_TOP_LEFT) Gravity.START else Gravity.END
             setPadding((8 * hudScale).toInt(), (4 * hudScale).toInt(), (8 * hudScale).toInt(), (4 * hudScale).toInt())
             setBackgroundColor(Color.TRANSPARENT)
         }
 
-        // 1. Cyberpunk 2077 Signature Yellow Time
+        // --- Row 1: Cyberpunk Time & Battery Bar ---
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+
+        // 1. Digital Clock (Cyberpunk Yellow #FFE600)
         clockTextView = TextView(this).apply {
             textSize = 24f * hudScale
-            setTextColor(Color.parseColor("#FFE600")) // Cyberpunk 2077 Yellow
+            setTextColor(Color.parseColor("#FFE600"))
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
             setShadowLayer(8f * hudScale, 0f, 0f, Color.parseColor("#88FFE600"))
         }
-        container.addView(clockTextView)
+        headerRow.addView(clockTextView)
 
         val spacer = TextView(this).apply { text = "   " }
-        container.addView(spacer)
+        headerRow.addView(spacer)
 
-        // 2. Very Small 5-Segment Cyberpunk Battery Indicator
+        // 2. Battery Bar (Cyberpunk Cyan #00E5FF)
         batteryTextView = TextView(this).apply {
-            textSize = 12f * hudScale // Small battery text
-            setTextColor(Color.parseColor("#00E5FF")) // Cyberpunk Cyan
+            textSize = 12f * hudScale
+            setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
             text = "▮▮▮▮▮ --%"
         }
-        container.addView(batteryTextView)
+        headerRow.addView(batteryTextView)
+
+        container.addView(headerRow)
+
+        // --- Row 2: Pure Transparent Cyberpunk Traced Directions (Neon Pink #FF0055 Accent) ---
+        navTraceTextView = TextView(this).apply {
+            textSize = 14f * hudScale
+            setTextColor(Color.parseColor("#FF0055")) // Neon Pink Vector Trace
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
+            setShadowLayer(6f * hudScale, 0f, 0f, Color.parseColor("#CCFF0055"))
+            visibility = View.GONE
+            setPadding(0, (6 * hudScale).toInt(), 0, 0)
+        }
+        container.addView(navTraceTextView)
 
         overlayView = container
         windowManager.addView(overlayView, windowLayoutParams)
@@ -167,8 +212,8 @@ class OverlayService : Service() {
         }
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Cyberpunk 2077 Cyberdeck HUD")
-            .setContentText("Minimal Time & Battery Overlay Active")
+            .setContentTitle("Cyberpunk Traced Directions Active")
+            .setContentText("Transparent Vector Nav & Time Overlay Active")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
 
@@ -180,6 +225,7 @@ class OverlayService : Service() {
         handler.removeCallbacks(clockRunnable)
         try {
             unregisterReceiver(batteryReceiver)
+            unregisterReceiver(navReceiver)
         } catch (e: Exception) {
             e.printStackTrace()
         }
