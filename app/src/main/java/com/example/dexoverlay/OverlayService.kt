@@ -31,11 +31,8 @@ class OverlayService : Service() {
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
     private var clockTextView: TextView? = null
-    private var batteryTextView: TextView? = null
-    private var navTraceTextView: TextView? = null
+    private var batteryView: CyberpunkBatteryView? = null
     private var windowLayoutParams: WindowManager.LayoutParams? = null
-
-    private var isNavActive = false
 
     private val handler = Handler(Looper.getMainLooper())
     private val clockRunnable = object : Runnable {
@@ -57,22 +54,7 @@ class OverlayService : Service() {
 
                 if (level >= 0 && scale > 0) {
                     val batteryPct = (level * 100 / scale.toFloat()).toInt()
-                    val segments = (batteryPct / 20).coerceIn(0, 5)
-
-                    val bars = StringBuilder()
-                    for (i in 1..5) {
-                        if (i <= segments) bars.append("▮") else bars.append("▯")
-                    }
-
-                    val prefix = if (isCharging) "⚡" else ""
-                    batteryTextView?.text = "$prefix $bars"
-                    batteryTextView?.setTextColor(
-                        when {
-                            isCharging -> Color.parseColor("#00FF66")
-                            batteryPct <= 20 -> Color.parseColor("#FF0055")
-                            else -> Color.parseColor("#00E5FF")
-                        }
-                    )
+                    batteryView?.updateBattery(batteryPct, isCharging)
                 }
             }
         }
@@ -98,23 +80,10 @@ class OverlayService : Service() {
         }
     }
 
-    // Navigation Listener Receiver for Cyberpunk Traced Directions
+    // Navigation Listener Receiver (Disabled for minimal HUD)
     private val navReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == MapsNavListenerService.ACTION_NAV_UPDATE) {
-                val active = intent.getBooleanExtra(MapsNavListenerService.EXTRA_IS_NAV_ACTIVE, false)
-                val arrow = intent.getStringExtra(MapsNavListenerService.EXTRA_NAV_ARROW) ?: "🠹"
-                val title = intent.getStringExtra(MapsNavListenerService.EXTRA_NAV_TITLE) ?: ""
-                val text = intent.getStringExtra(MapsNavListenerService.EXTRA_NAV_TEXT) ?: ""
-
-                isNavActive = active
-                if (active && (title.isNotEmpty() || text.isNotEmpty())) {
-                    navTraceTextView?.text = "$arrow $title • $text"
-                    navTraceTextView?.visibility = View.VISIBLE
-                } else {
-                    navTraceTextView?.visibility = View.GONE
-                }
-            }
+            // No action needed for minimal HUD
         }
     }
 
@@ -204,15 +173,14 @@ class OverlayService : Service() {
         val spacer = TextView(this).apply { text = "   " }
         headerRow.addView(spacer)
 
-        // 2. Battery Bar (Cyberpunk Cyan #00E5FF)
-        batteryTextView = TextView(this).apply {
-            textSize = 12f * hudScale
-            setTextColor(Color.parseColor("#00E5FF"))
-            typeface = Typeface.MONOSPACE
-            setTypeface(typeface, Typeface.BOLD)
-            text = "▮▮▮▮▮"
+        // 2. Cyberpunk Custom Battery View
+        batteryView = CyberpunkBatteryView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                (120 * hudScale).toInt(),
+                (30 * hudScale).toInt()
+            )
         }
-        headerRow.addView(batteryTextView)
+        headerRow.addView(batteryView)
 
         container.addView(headerRow)
 
