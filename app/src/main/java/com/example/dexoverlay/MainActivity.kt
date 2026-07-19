@@ -9,8 +9,6 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -25,22 +23,8 @@ import android.widget.Toast
 
 class MainActivity : Activity() {
 
-    private lateinit var usbDriver: XrealUsbImuDriver
-    private var debugTextView: TextView? = null
-    private val mainHandler = Handler(Looper.getMainLooper())
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        usbDriver = XrealUsbImuDriver(this)
-        usbDriver.onDebugLogListener = { msg ->
-            mainHandler.post {
-                val currentText = debugTextView?.text?.toString() ?: ""
-                val lines = currentText.split("\n").takeLast(6).toMutableList()
-                lines.add("> $msg")
-                debugTextView?.text = lines.joinToString("\n")
-            }
-        }
 
         stopOverlayService()
 
@@ -50,7 +34,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(28, 20, 28, 28)
-            setBackgroundColor(Color.parseColor("#03060B"))
+            setBackgroundColor(Color.parseColor("#03060B")) // Sleek Cyberpunk Netrunner Dark
         }
 
         // --- Streamlined Cyberdeck Header ---
@@ -76,7 +60,7 @@ class MainActivity : Activity() {
         headerCard.addView(headerText)
 
         val statusTag = TextView(this).apply {
-            text = "[ ENGINE SELECTOR ]"
+            text = "[ GYROSCOPE ACTIVE ]"
             textSize = 10f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -87,57 +71,13 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
-        // --- Card 0: Engine Mode Selector (WebXR vs Direct USB) ---
-        val currentEngine = prefs.getString(OverlayService.KEY_ENGINE_MODE, OverlayService.ENGINE_WEBXR) ?: OverlayService.ENGINE_WEBXR
-        val engineCard = createCompactCard("⚡ CHOOSE HEAD TRACKING ENGINE", "#FFE600")
-
-        val engineGroup = RadioGroup(this).apply {
-            orientation = RadioGroup.VERTICAL
-        }
-
-        val rbWebXR = RadioButton(this).apply {
-            id = View.generateViewId()
-            text = "🌐 WebXR Device API Engine (Recommended - Zero USB Prompts)"
-            setTextColor(Color.parseColor("#00E5FF"))
-            textSize = 11f
-            typeface = Typeface.MONOSPACE
-            isChecked = (currentEngine == OverlayService.ENGINE_WEBXR)
-        }
-
-        val rbDirectUsb = RadioButton(this).apply {
-            id = View.generateViewId()
-            text = "🔌 Direct USB-C Hardware Cable Mode"
-            setTextColor(Color.WHITE)
-            textSize = 11f
-            typeface = Typeface.MONOSPACE
-            isChecked = (currentEngine == OverlayService.ENGINE_DIRECT_USB)
-        }
-
-        engineGroup.addView(rbWebXR)
-        engineGroup.addView(rbDirectUsb)
-
-        engineGroup.setOnCheckedChangeListener { group, checkedId ->
-            val checkedRb = group.findViewById<RadioButton>(checkedId)
-            if (checkedRb != null && checkedRb.isPressed) {
-                val selectedEngine = if (checkedId == rbWebXR.id) OverlayService.ENGINE_WEBXR else OverlayService.ENGINE_DIRECT_USB
-                prefs.edit().putString(OverlayService.KEY_ENGINE_MODE, selectedEngine).apply()
-                Toast.makeText(this, "Engine set to: ${if (selectedEngine == OverlayService.ENGINE_WEBXR) "WebXR Device API" else "Direct USB Mode"}", Toast.LENGTH_SHORT).show()
-                restartOverlayServiceIfRunning()
-            }
-        }
-        engineCard.addView(engineGroup)
-        rootLayout.addView(engineCard)
-
-        val spacer_engine = TextView(this).apply { text = " " }
-        rootLayout.addView(spacer_engine)
-
-        // --- Card 1: Head Tracking Control & WebXR Engine ---
+        // --- Card 1: Motion Sensor & System Click Driver ---
         val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, true)
 
-        val connCard = createCompactCard("👓 XREAL 1s HEAD CURSOR & SYSTEM CLICKS", "#00E5FF")
+        val connCard = createCompactCard("👓 GYROSCOPE HEAD CURSOR & SYSTEM CLICKS", "#00E5FF")
 
         val cbHeadCursor = CheckBox(this).apply {
-            text = " Enable Head Tracking Cursor Reticle"
+            text = " Enable Motion Gyroscope Head Cursor"
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             textSize = 12f
@@ -153,7 +93,7 @@ class MainActivity : Activity() {
         connCard.addView(cbHeadCursor)
 
         val btnAccessibility = Button(this).apply {
-            text = "👆 ENABLE ACCESSIBILITY FOR SYSTEM CLICKS"
+            text = "👆 ENABLE ACCESSIBILITY FOR SYSTEM MOUSE CLICKS"
             setBackgroundColor(Color.parseColor("#0C182B"))
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -169,35 +109,6 @@ class MainActivity : Activity() {
             }
         }
         connCard.addView(btnAccessibility)
-
-        val btnScanUsb = Button(this).apply {
-            text = "🔍 [ DIAGNOSE & SCAN USB DEVICES ]"
-            setBackgroundColor(Color.parseColor("#09111E"))
-            setTextColor(Color.parseColor("#FFE600"))
-            typeface = Typeface.MONOSPACE
-            textSize = 10f
-            setOnClickListener {
-                val summary = usbDriver.getAllConnectedUsbDevicesSummary()
-                debugTextView?.text = "> Connected USB Devices:\n$summary"
-                requestXrealUsbPermission()
-            }
-        }
-        connCard.addView(btnScanUsb)
-
-        // Live Diagnostic Terminal Log Card
-        debugTextView = TextView(this).apply {
-            text = "> WebXR Device API Engine Ready.\n> Plug in XREAL 1s glasses to start."
-            textSize = 9f
-            setTextColor(Color.parseColor("#00FF66"))
-            typeface = Typeface.MONOSPACE
-            setPadding(12, 10, 12, 10)
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#050B14"))
-                setStroke(1, Color.parseColor("#00FF66"))
-                cornerRadius = 2f
-            }
-        }
-        connCard.addView(debugTextView)
         rootLayout.addView(connCard)
 
         val spacer_mode = TextView(this).apply { text = " " }
@@ -493,16 +404,6 @@ class MainActivity : Activity() {
         }
         container.addView(cardTitle)
         return container
-    }
-
-    private fun requestXrealUsbPermission() {
-        val device = usbDriver.findXrealDevice()
-        if (device != null) {
-            usbDriver.requestUsbPermission(device)
-            Toast.makeText(this, "XREAL Device Found! Requesting Permission...", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "No USB Device on port. Plug in XREAL glasses!", Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun checkAndRequestOverlayPermission() {
