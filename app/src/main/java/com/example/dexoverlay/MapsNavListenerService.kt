@@ -14,17 +14,30 @@ class MapsNavListenerService : NotificationListenerService() {
             val extras = sbn.notification.extras
             val title = extras.getCharSequence("android.title")?.toString() ?: ""
             val text = extras.getCharSequence("android.text")?.toString() ?: ""
-            val subText = extras.getCharSequence("android.subText")?.toString() ?: ""
 
             if (title.isNotEmpty() || text.isNotEmpty()) {
+                val arrow = parseVectorArrow("$title $text")
                 val intent = Intent(ACTION_NAV_UPDATE).apply {
                     putExtra(EXTRA_IS_NAV_ACTIVE, true)
+                    putExtra(EXTRA_NAV_ARROW, arrow)
                     putExtra(EXTRA_NAV_TITLE, title)
                     putExtra(EXTRA_NAV_TEXT, text)
-                    putExtra(EXTRA_NAV_SUBTEXT, subText)
                 }
                 sendBroadcast(intent)
             }
+        }
+    }
+
+    private fun parseVectorArrow(rawText: String): String {
+        val lower = rawText.lowercase()
+        return when {
+            lower.contains("slight right") || lower.contains("bear right") -> "↗"
+            lower.contains("slight left") || lower.contains("bear left") -> "↖"
+            lower.contains("right") -> "🠺"
+            lower.contains("left") -> "🠸"
+            lower.contains("u-turn") -> "⤺"
+            lower.contains("straight") || lower.contains("continue") -> "🠹"
+            else -> "🠹"
         }
     }
 
@@ -41,8 +54,8 @@ class MapsNavListenerService : NotificationListenerService() {
     companion object {
         const val ACTION_NAV_UPDATE = "com.example.dexoverlay.NAV_UPDATE"
         const val EXTRA_IS_NAV_ACTIVE = "is_nav_active"
+        const val EXTRA_NAV_ARROW = "nav_arrow"
         const val EXTRA_NAV_TITLE = "nav_title"
         const val EXTRA_NAV_TEXT = "nav_text"
-        const val EXTRA_NAV_SUBTEXT = "nav_subtext"
     }
 }
