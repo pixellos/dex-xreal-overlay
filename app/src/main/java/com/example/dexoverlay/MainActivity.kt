@@ -1,11 +1,13 @@
 package com.example.dexoverlay
 
 import android.app.Activity
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -23,10 +25,12 @@ import android.widget.Toast
 
 class MainActivity : Activity() {
 
+    private lateinit var usbDriver: XrealUsbImuDriver
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Force stop running OverlayService to clean up any cached WindowManager views
+        usbDriver = XrealUsbImuDriver(this)
         stopOverlayService()
 
         val prefs = getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
@@ -72,7 +76,7 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = "\n" }
         rootLayout.addView(spacer1)
 
-        // --- Quickhack 1: CYBERWARE IMU (XREAL Head Tracking & Button Click Driver) ---
+        // --- Quickhack 1: CYBERWARE IMU (XREAL Head Tracking & Button Driver) ---
         val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, false)
         val singleTapAction = prefs.getString(OverlayService.KEY_SINGLE_TAP_ACTION, OverlayService.SINGLE_TAP_ACTION_CLICK) ?: OverlayService.SINGLE_TAP_ACTION_CLICK
 
@@ -84,6 +88,16 @@ class MainActivity : Activity() {
             iconText = "👓",
             isHighlighted = true
         )
+
+        val btnConnectUsb = Button(this).apply {
+            text = "⚡ [ GRANT XREAL USB SENSOR PERMISSION ]"
+            setBackgroundColor(Color.parseColor("#09111E"))
+            setTextColor(Color.parseColor("#00E5FF"))
+            typeface = Typeface.MONOSPACE
+            textSize = 11f
+            setOnClickListener { requestXrealUsbPermission() }
+        }
+        imuCard.addView(btnConnectUsb)
 
         val cbHeadCursor = CheckBox(this).apply {
             text = "[ ENABLE XREAL 1s IMU HEAD-TRACKED CURSOR ]"
@@ -461,6 +475,20 @@ class MainActivity : Activity() {
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
             startOverlayService()
+        }
+    }
+
+    private fun requestXrealUsbPermission() {
+        val device = usbDriver.findXrealDevice()
+        if (device != null) {
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_MUTABLE
+            } else 0
+            val intent = PendingIntent.getBroadcast(this, 0, Intent("com.example.dexoverlay.USB_PERMISSION"), flags)
+            usbDriver.requestUsbPermission(device, intent)
+            Toast.makeText(this, "XREAL Glasses Detected! Requesting USB Permission...", Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(this, "Connect XREAL 1s USB-C glasses to your phone first!", Toast.LENGTH_LONG).show()
         }
     }
 
