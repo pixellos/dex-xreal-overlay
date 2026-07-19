@@ -9,6 +9,8 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -24,11 +26,22 @@ import android.widget.Toast
 class MainActivity : Activity() {
 
     private lateinit var usbDriver: XrealUsbImuDriver
+    private var debugTextView: TextView? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         usbDriver = XrealUsbImuDriver(this)
+        usbDriver.onDebugLogListener = { msg ->
+            mainHandler.post {
+                val currentText = debugTextView?.text?.toString() ?: ""
+                val lines = currentText.split("\n").takeLast(6).toMutableList()
+                lines.add("> $msg")
+                debugTextView?.text = lines.joinToString("\n")
+            }
+        }
+
         stopOverlayService()
 
         val prefs = getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
@@ -37,7 +50,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(28, 20, 28, 28)
-            setBackgroundColor(Color.parseColor("#03060B")) // Sleek Cyberpunk Netrunner Dark
+            setBackgroundColor(Color.parseColor("#03060B"))
         }
 
         // --- Streamlined Cyberdeck Header ---
@@ -63,7 +76,7 @@ class MainActivity : Activity() {
         headerCard.addView(headerText)
 
         val statusTag = TextView(this).apply {
-            text = "[ XREAL 1s GLASSES HARDWARE ]"
+            text = "[ XREAL 1s USB DIAGNOSTICS ]"
             textSize = 10f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -74,7 +87,7 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
-        // --- Card 1: Head Tracking Control (XREAL Headset Hardware Only) ---
+        // --- Card 1: Head Tracking Control & USB Terminal ---
         val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, true)
 
         val connCard = createCompactCard("👓 XREAL 1s HEADSET HARDWARE CURSOR", "#00E5FF")
@@ -113,21 +126,34 @@ class MainActivity : Activity() {
         }
         connCard.addView(btnAccessibility)
 
-        val btnConnectUsb = Button(this).apply {
-            text = "⚡ WAKE UP XREAL 1s HARDWARE IMU SENSORS"
+        val btnScanUsb = Button(this).apply {
+            text = "🔍 [ DIAGNOSE & SCAN USB DEVICES ]"
             setBackgroundColor(Color.parseColor("#09111E"))
             setTextColor(Color.parseColor("#FFE600"))
             typeface = Typeface.MONOSPACE
             textSize = 10f
             setOnClickListener {
-                try {
-                    requestXrealUsbPermission()
-                } catch (e: Exception) {
-                    Toast.makeText(this@MainActivity, "USB Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                val summary = usbDriver.getAllConnectedUsbDevicesSummary()
+                debugTextView?.text = "> Connected USB Devices:\n$summary"
+                requestXrealUsbPermission()
             }
         }
-        connCard.addView(btnConnectUsb)
+        connCard.addView(btnScanUsb)
+
+        // Live USB Terminal Log Card
+        debugTextView = TextView(this).apply {
+            text = "> USB Diagnostic Terminal Ready.\n> Plug in XREAL 1s glasses to start."
+            textSize = 9f
+            setTextColor(Color.parseColor("#00FF66"))
+            typeface = Typeface.MONOSPACE
+            setPadding(12, 10, 12, 10)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#050B14"))
+                setStroke(1, Color.parseColor("#00FF66"))
+                cornerRadius = 2f
+            }
+        }
+        connCard.addView(debugTextView)
         rootLayout.addView(connCard)
 
         val spacer_mode = TextView(this).apply { text = " " }

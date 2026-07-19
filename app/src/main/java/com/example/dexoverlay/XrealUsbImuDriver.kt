@@ -21,13 +21,13 @@ class XrealUsbImuDriver(private val context: Context) {
 
     private var usbManager: UsbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
     private var usbConnection: UsbDeviceConnection? = null
-    private var usbInterface: UsbInterface? = null
     private var isReading = false
     private var readThread: Thread? = null
     private var isReceiverRegistered = false
 
     var onHeadMoveListener: ((deltaX: Float, deltaY: Float) -> Unit)? = null
     var onGlassesSingleTapListener: (() -> Unit)? = null
+    var onDebugLogListener: ((log: String) -> Unit)? = null
 
     private val usbReceiver = object : BroadcastReceiver() {
         override fun onReceive(cntx: Context?, intent: Intent?) {
@@ -42,16 +42,22 @@ class XrealUsbImuDriver(private val context: Context) {
                         }
 
                         if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                            log("USB Permission GRANTED for ${device?.deviceName}")
                             device?.let { startReading(it) }
                         } else {
-                            Log.e("XrealUsbDriver", "USB Permission DENIED by user!")
+                            log("USB Permission DENIED by user!")
                         }
                     } catch (e: Exception) {
-                        Log.e("XrealUsbDriver", "Error handling USB permission broadcast", e)
+                        log("Error handling USB permission broadcast: ${e.message}")
                     }
                 }
             }
         }
+    }
+
+    private fun log(msg: String) {
+        Log.d("XrealUsbDriver", msg)
+        onDebugLogListener?.invoke(msg)
     }
 
     fun registerPermissionReceiver() {
@@ -65,7 +71,7 @@ class XrealUsbImuDriver(private val context: Context) {
                 }
                 isReceiverRegistered = true
             } catch (e: Exception) {
-                Log.e("XrealUsbDriver", "Error registering receiver", e)
+                log("Error registering receiver: ${e.message}")
             }
         }
     }
@@ -73,6 +79,14 @@ class XrealUsbImuDriver(private val context: Context) {
     fun findXrealDevice(): UsbDevice? {
         try {
             val deviceList = usbManager.deviceList.values
+            log("Scanning USB Devices. Count=${deviceList.size}")
+
+            for (device in deviceList) {
+                val vidHex = "0x" + Integer.toHexString(device.vendorId).uppercase()
+                val pidHex = "0x" + Integer.toHexString(device.productId).uppercase()
+                log("Found USB Device -> VID:$vidHex PID:$pidHex Name:${device.deviceName} Interfaces:${device.interfaceCount}")
+            }
+
             var match = deviceList.find { device ->
                 device.vendorId in XREAL_VIDS || device.productId in XREAL_PIDS
             }
@@ -92,10 +106,32 @@ class XrealUsbImuDriver(private val context: Context) {
                     hasInterruptIn
                 }
             }
+
+            if (match != null) {
+                log("MATCHED XREAL Device -> VID:0x${Integer.toHexString(match.vendorId).uppercase()} PID:0x${Integer.toHexString(match.productId).uppercase()}")
+            } else {
+                log("No XREAL device matched from list.")
+            }
+
             return match
         } catch (e: Exception) {
-            Log.e("XrealUsbDriver", "Error scanning USB devices", e)
+            log("Error scanning USB devices: ${e.message}")
             return null
+        }
+    }
+
+    fun getAllConnectedUsbDevicesSummary(): String {
+        try {
+            val deviceList = usbManager.deviceList.values
+            if (deviceList.isEmpty()) return "No USB devices detected on USB-C port"
+
+            val sb = StringBuilder()
+            for (dev in deviceList) {
+                sb.append("VID:0x${Integer.toHexString(dev.vendorId).uppercase()} PID:0x${Integer.toHexString(dev.productId).uppercase()} - ${dev.deviceName}\n")
+            }
+            return sb.toString()
+        } catch (e: Exception) {
+            return "Error scanning USB devices: ${e.message}"
         }
     }
 
@@ -120,19 +156,19 @@ class XrealUsbImuDriver(private val context: Context) {
             }
             val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, flags)
             usbManager.requestPermission(device, pendingIntent)
+            log("Requested USB Permission for VID:0x${Integer.toHexString(device.vendorId).uppercase()}")
         } catch (e: Exception) {
-            Log.e("XrealUsbDriver", "Error requesting USB permission", e)
+            log("Error requesting USB permission: ${e.message}")
         }
     }
 
-    // Send XREAL 1s IMU Activation Stream Handshake (0xAA 0xC5)
     private fun sendXrealImuWakeupPacket(connection: UsbDeviceConnection, intfIndex: Int, outEndpoint: UsbEndpoint?): Boolean {
         return try {
             val enableCmd = ByteArray(64)
             enableCmd[0] = 0xAA.toByte()
             enableCmd[1] = 0xC5.toByte()
             enableCmd[2] = 0x00.toByte()
-            enableCmd[3] = 0x01.toByte() // Stream ON command
+            enableCmd[3] = 0x01.toByte()
 
             val res = if (outEndpoint != null) {
                 connection.bulkTransfer(outEndpoint, enableCmd, enableCmd.size, 1000)
@@ -145,66 +181,64 @@ class XrealUsbImuDriver(private val context: Context) {
                     enableCmd, enableCmd.size, 1000
                 )
             }
-            Log.d("XrealUsbDriver", "Sent XREAL IMU Stream ON Activation Handshake. Result=$res")
+            log("Sent Activation Handshake to Intf $intfIndex. Result=$res")
             res >= 0
         } catch (e: Exception) {
-            Log.e("XrealUsbDriver", "Failed to send stream activation handshake", e)
+            log("Wakeup packet exception: ${e.message}")
             false
         }
     }
 
     fun startReading(device: UsbDevice): Boolean {
         try {
-            val connection = usbManager.openDevice(device) ?: return false
+            val connection = usbManager.openDevice(device) ?: run {
+                log("Failed to open connection to device!")
+                return false
+            }
 
-            var targetIntf: UsbInterface? = null
-            var targetInEp: UsbEndpoint? = null
-            var targetOutEp: UsbEndpoint? = null
+            log("Claiming all interfaces for device ${device.deviceName}...")
+            var activeEndpoint: UsbEndpoint? = null
 
             for (i in 0 until device.interfaceCount) {
                 val intf = device.getInterface(i)
-                connection.claimInterface(intf, true)
+                val claimed = connection.claimInterface(intf, true)
+                log("Interface $i claimed=$claimed (Endpoints: ${intf.endpointCount})")
 
-                var inEp: UsbEndpoint? = null
                 var outEp: UsbEndpoint? = null
-
                 for (e in 0 until intf.endpointCount) {
                     val ep = intf.getEndpoint(e)
-                    if (ep.direction == UsbConstants.USB_DIR_IN && (ep.address == 0x84 || ep.address == 0x86 || targetInEp == null)) {
-                        inEp = ep
+                    if (ep.direction == UsbConstants.USB_DIR_IN && activeEndpoint == null) {
+                        activeEndpoint = ep
                     } else if (ep.direction == UsbConstants.USB_DIR_OUT) {
                         outEp = ep
                     }
                 }
-
-                if (inEp != null) {
-                    targetIntf = intf
-                    targetInEp = inEp
-                    targetOutEp = outEp
-                    sendXrealImuWakeupPacket(connection, i, outEp)
-                    break
-                }
+                sendXrealImuWakeupPacket(connection, i, outEp)
             }
 
-            if (targetIntf == null || targetInEp == null) return false
+            if (activeEndpoint == null) {
+                log("No IN endpoint found!")
+                return false
+            }
 
             usbConnection = connection
-            usbInterface = targetIntf
             isReading = true
 
-            val inEp = targetInEp
+            val ep = activeEndpoint
+            log("Reading from Endpoint 0x${Integer.toHexString(ep.address).uppercase()} (PacketSize: ${ep.maxPacketSize})")
 
             readThread = Thread {
                 val buffer = ByteArray(64)
                 var lastButtonState = false
                 var lastPressTime = 0L
+                var packetCount = 0
 
                 val usbRequest = UsbRequest()
                 val byteBuffer = ByteBuffer.wrap(buffer)
-                usbRequest.initialize(connection, inEp)
+                usbRequest.initialize(connection, ep)
 
                 while (isReading) {
-                    var bytesRead = connection.bulkTransfer(inEp, buffer, buffer.size, 100)
+                    var bytesRead = connection.bulkTransfer(ep, buffer, buffer.size, 100)
 
                     if (bytesRead < 16) {
                         usbRequest.queue(byteBuffer, buffer.size)
@@ -213,27 +247,42 @@ class XrealUsbImuDriver(private val context: Context) {
                         }
                     }
 
-                    if (bytesRead >= 38) {
-                        val bb = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN)
+                    if (bytesRead >= 16) {
+                        packetCount++
+                        if (packetCount % 200 == 0) {
+                            log("USB Packets Stream Active! Received: $packetCount packets")
+                        }
 
-                        // Gyroscope Pitch (X) and Yaw (Y) angular velocity
-                        val rawGyroX = bb.getShort(8).toFloat() / 100.0f
-                        val rawGyroY = bb.getShort(10).toFloat() / 100.0f
+                        val gyroX: Float
+                        val gyroY: Float
 
-                        val deltaX = rawGyroY * 0.5f
-                        val deltaY = -rawGyroX * 0.5f
+                        if (bytesRead >= 38) {
+                            val bb = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN)
+                            gyroX = bb.getShort(8).toFloat() / 100.0f
+                            gyroY = bb.getShort(10).toFloat() / 100.0f
+                        } else {
+                            val rawGyroX = ((buffer[3].toInt() and 0xFF) shl 8) or (buffer[2].toInt() and 0xFF)
+                            val rawGyroY = ((buffer[5].toInt() and 0xFF) shl 8) or (buffer[4].toInt() and 0xFF)
+                            val gX = if (rawGyroX > 32767) rawGyroX - 65536 else rawGyroX
+                            val gY = if (rawGyroY > 32767) rawGyroY - 65536 else rawGyroY
+                            gyroX = gX / 400f
+                            gyroY = gY / 400f
+                        }
+
+                        val deltaX = gyroY * 0.5f
+                        val deltaY = -gyroX * 0.5f
 
                         if (Math.abs(deltaX) > 0.01f || Math.abs(deltaY) > 0.01f) {
                             onHeadMoveListener?.invoke(deltaX, deltaY)
                         }
 
-                        // Temple Buttons Bitmask at Byte Offset 38 (0x26)
-                        val btnBitmask = buffer[38].toInt()
+                        val btnBitmask = if (bytesRead >= 39) buffer[38].toInt() else 0
                         val buttonPressed = (btnBitmask and 0x08) != 0 || (btnBitmask and 0x01) != 0 || (buffer[10].toInt() and 0x01) != 0
                         val currentTime = System.currentTimeMillis()
 
                         if (buttonPressed && !lastButtonState) {
                             if (currentTime - lastPressTime > 250) {
+                                log("Glasses Temple Button Click Detected!")
                                 onGlassesSingleTapListener?.invoke()
                                 lastPressTime = currentTime
                             }
@@ -245,7 +294,7 @@ class XrealUsbImuDriver(private val context: Context) {
 
             return true
         } catch (e: Exception) {
-            Log.e("XrealUsbDriver", "Error starting reading", e)
+            log("Error starting reading: ${e.message}")
             return false
         }
     }
@@ -261,7 +310,6 @@ class XrealUsbImuDriver(private val context: Context) {
         try {
             readThread?.interrupt()
             readThread = null
-            usbInterface?.let { usbConnection?.releaseInterface(it) }
             usbConnection?.close()
         } catch (e: Exception) {
             e.printStackTrace()
@@ -269,8 +317,8 @@ class XrealUsbImuDriver(private val context: Context) {
     }
 
     companion object {
-        val XREAL_VIDS = intArrayOf(0x3318, 0x04D8, 0x28E5, 0x0483, 0x0403)
-        val XREAL_PIDS = intArrayOf(0x0425, 0x0429, 0x0424, 0x0423, 0x0428, 0x0432, 0x0426, 0x0303, 0x0571)
+        val XREAL_VIDS = intArrayOf(0x3318, 0x04D8, 0x28E5, 0x0483, 0x0403, 0x0BDA)
+        val XREAL_PIDS = intArrayOf(0x0425, 0x0429, 0x0424, 0x0423, 0x0428, 0x0432, 0x0426, 0x0303, 0x0571, 0x1100, 0x2100)
         const val ACTION_USB_PERMISSION = "com.xreal.hid.USB_PERMISSION"
     }
 }
