@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CYBERDECK v2.077 // Cyberpunk Traced Directions Simulator</title>
+    <title>CYBERDECK v 552.322 // Cyberpunk 2077 In-Game Quickhacks</title>
     <style>
         * {
             box-sizing: border-box;
@@ -13,7 +13,7 @@
         }
 
         body {
-            background-color: #05070a;
+            background-color: #04070D;
             color: #ffffff;
             display: flex;
             flex-direction: column;
@@ -92,7 +92,7 @@
             z-index: 100;
             user-select: none;
             transition: all 0.2s ease;
-            background: transparent; /* 100% Transparent for XREAL Micro-OLED */
+            background: transparent;
             display: flex;
             flex-direction: column;
             align-items: flex-end;
@@ -106,7 +106,7 @@
         }
 
         .hud-clock {
-            color: #FFE600; /* Cyberpunk Signature Yellow */
+            color: #FFE600;
             font-size: 24px;
             font-weight: 900;
             letter-spacing: 2px;
@@ -121,7 +121,7 @@
         }
 
         .hud-nav-trace {
-            color: #FF0055; /* Neon Pink Vector Accent */
+            color: #FF0055;
             font-size: 14px;
             font-weight: 800;
             letter-spacing: 1px;
@@ -129,76 +129,153 @@
             display: none;
         }
 
-        /* Cyberdeck Controls Panel */
+        /* Authentic Cyberpunk 2077 In-Game Quickhack Menu Panel */
         .cyberdeck-panel {
             flex: 1;
-            min-width: 320px;
-            background: #080A0F;
-            padding: 22px;
-            border-radius: 12px;
-            border: 2px solid #FF0055;
-            box-shadow: 0 0 25px rgba(255, 0, 85, 0.2);
+            min-width: 340px;
+            background: #04070D;
+            padding: 20px;
+            border-radius: 4px;
+            border: 2px solid #00E5FF;
+            box-shadow: 0 0 25px rgba(0, 229, 255, 0.2);
             height: fit-content;
         }
 
         .cyberdeck-panel h2 {
-            font-size: 16px;
+            font-size: 11px;
+            color: #FF0055;
+            margin-bottom: 4px;
+            letter-spacing: 1.5px;
+        }
+
+        .cyberdeck-panel h1 {
+            font-size: 18px;
             color: #FFE600;
             margin-bottom: 16px;
-            border-bottom: 1px solid #1a2332;
-            padding-bottom: 8px;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #1a2436;
+            padding-bottom: 6px;
+        }
+
+        /* Cyberpunk 2077 In-Game Quickhack Bar Styling */
+        .ingame-quickhack-bar {
+            background: #09111E;
+            border: 2px solid #00E5FF;
+            border-radius: 2px;
+            margin-bottom: 10px;
+            padding: 10px 14px;
+            transition: all 0.2s ease;
+        }
+
+        .ingame-quickhack-bar:hover {
+            border-color: #FFE600;
+            box-shadow: 0 0 12px rgba(255, 230, 0, 0.3);
+        }
+
+        .bar-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .bar-left {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .bar-title {
+            font-size: 14px;
+            font-weight: 800;
+            color: #ffffff;
             letter-spacing: 1px;
         }
 
-        .quickhack-card {
-            background: #0f1420;
-            border: 1px solid #243247;
-            padding: 14px;
-            border-radius: 6px;
-            margin-bottom: 14px;
+        .bar-tag {
+            font-size: 9px;
+            color: #00E5FF;
+            border: 1px solid #00E5FF;
+            padding: 1px 5px;
+            border-radius: 1px;
+            margin-top: 3px;
+            width: fit-content;
         }
 
-        .quickhack-header {
+        .bar-right {
             display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
+            align-items: center;
+            gap: 10px;
         }
 
-        .quickhack-title {
-            font-size: 12px;
+        .ram-badge {
+            background: #050A12;
+            border: 1px solid #1B2A40;
             color: #ffffff;
-            font-weight: 700;
+            font-size: 16px;
+            font-weight: 800;
+            padding: 4px 10px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }
 
-        .quickhack-tag {
-            font-size: 11px;
-            color: #FF0055;
+        .ram-badge span {
+            color: #00E5FF;
+            font-size: 10px;
         }
 
-        .btn-toggle-nav {
-            background: #FF0055;
-            color: #fff;
+        .icon-badge {
+            border: 1px solid #00E5FF;
+            color: #00E5FF;
+            font-size: 14px;
+            padding: 6px 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .range-slider {
+            width: 100%;
+            accent-color: #FFE600;
+            margin-top: 8px;
+        }
+
+        .btn-action {
+            background: #FFE600;
+            color: #000;
             border: none;
             padding: 12px;
-            border-radius: 4px;
+            border-radius: 2px;
             font-weight: 900;
             cursor: pointer;
             width: 100%;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
+            margin-top: 10px;
+        }
+
+        .btn-stop {
+            background: #FF0055;
+            color: #fff;
+            border: none;
+            padding: 10px;
+            border-radius: 2px;
+            font-weight: 800;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 8px;
         }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>⚡ CYBERDECK v2.077 // TRACED DIRECTIONS</h1>
-        <p>TRANSPARENT VECTOR NAV & TIME OVERLAY SIMULATOR</p>
+        <h1>⚡ CYBERDECK v 552.322 // IN-GAME QUICKHACKS</h1>
+        <p>CYBERPUNK 2077 HUD & NETRUNNER OPTIONS</p>
     </header>
 
     <div class="main-container">
         <!-- XREAL Display Simulator -->
         <div class="xreal-display" id="xrealDisplay">
-            <div class="xreal-badge">XREAL 1s • TRACED VECTOR HUD</div>
+            <div class="xreal-badge">XREAL 1s • CYBERWARE HUD</div>
             
             <video class="video-simulator" autoplay loop muted poster="https://images.unsplash.com/photo-1534447677768-be436bb09401?w=1200">
                 <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
@@ -207,30 +284,71 @@
             <!-- Cyberpunk Transparent Traced Vector HUD -->
             <div class="cyberpunk-traced-hud" id="hudWidget">
                 <div class="hud-row">
-                    <div class="hud-clock" id="clock">18:20:24</div>
+                    <div class="hud-clock" id="clock">19:01:30</div>
                     <div class="hud-battery" id="battery">▮▮▮▮▮ 88%</div>
                 </div>
                 <div class="hud-nav-trace" id="navTrace">🠺 200m • MAIN ST TOWARDS CITY CENTER</div>
             </div>
         </div>
 
-        <!-- Cyberdeck Controls Panel -->
+        <!-- Cyberpunk 2077 In-Game Quickhacks Menu Panel -->
         <div class="cyberdeck-panel">
-            <h2>TRACED DIRECTIONS CONFIGURATOR</h2>
+            <h2>CYBERDECK v 552.322</h2>
+            <h1>AVAILABLE QUICKHACKS:</h1>
 
-            <div class="quickhack-card">
-                <div class="quickhack-header">
-                    <div class="quickhack-title">QUICKHACK: MAPS NAV TRACE SIMULATOR</div>
-                    <div class="quickhack-tag">[ACTIVE]</div>
+            <!-- Quickhack #1: SYSTEM COLLAPSE (28 RAM) -->
+            <div class="ingame-quickhack-bar">
+                <div class="bar-top">
+                    <div class="bar-left">
+                        <div class="bar-title">SYSTEM COLLAPSE</div>
+                        <div class="bar-tag">READY</div>
+                    </div>
+                    <div class="bar-right">
+                        <div class="ram-badge">28 <span>▮</span></div>
+                        <div class="icon-badge">🗲</div>
+                    </div>
                 </div>
-                <p style="font-size:12px; color:#94a3b8; margin-bottom:12px;">Toggle simulated Google Maps active turn-by-turn navigation vector trace:</p>
-                <button class="btn-toggle-nav" onclick="toggleSimulatedNav()">🪧 TOGGLE GOOGLE MAPS VECTOR TRACE</button>
+                <label style="font-size:11px; color:#94a3b8; display:block; margin-top:8px;">HUD Scale: <span id="scaleVal" style="color:#FFE600; font-weight:bold;">1.00x</span></label>
+                <input type="range" class="range-slider" min="25" max="150" value="100" oninput="updateScale(this.value)">
             </div>
 
-            <div style="background:#060910; padding:12px; border-radius:8px; font-size:12px; color:#94a3b8; margin-top:16px; line-height:1.5;">
-                <span style="color:#FF0055; font-weight:bold;">100% Transparent AR Vector Note:</span><br>
-                Notice how directional arrows (<code style="color:#FF0055;">🠺 🠸 🠹</code>) and street names float seamlessly in your vision without any dark rectangular containers!
+            <!-- Quickhack #2: OVERHEAT (9 RAM) -->
+            <div class="ingame-quickhack-bar">
+                <div class="bar-top">
+                    <div class="bar-left">
+                        <div class="bar-title">OVERHEAT</div>
+                        <div class="bar-tag">READY | TRACEABLE</div>
+                    </div>
+                    <div class="bar-right">
+                        <div class="ram-badge">9 <span>▮</span></div>
+                        <div class="icon-badge">🎯</div>
+                    </div>
+                </div>
+                <select onchange="setCornerPosition(this.value)" style="width:100%; padding:4px; background:#050A12; color:#FFE600; border:1px solid #1B2A40; font-weight:bold; font-size:11px; margin-top:6px;">
+                    <option value="right">[ TOP-RIGHT CORNER ]</option>
+                    <option value="left">[ TOP-LEFT CORNER ]</option>
+                </select>
             </div>
+
+            <!-- Quickhack #3: PING (4 RAM) -->
+            <div class="ingame-quickhack-bar">
+                <div class="bar-top">
+                    <div class="bar-left">
+                        <div class="bar-title">PING</div>
+                        <div class="bar-tag">INSTALLED</div>
+                    </div>
+                    <div class="bar-right">
+                        <div class="ram-badge">4 <span>▮</span></div>
+                        <div class="icon-badge">🪧</div>
+                    </div>
+                </div>
+                <button onclick="toggleSimulatedNav()" style="background:#00E5FF; color:#000; border:none; padding:4px 8px; border-radius:2px; font-weight:bold; font-size:10px; cursor:pointer; width:100%; margin-top:6px;">
+                    TOGGLE VECTOR TRACE
+                </button>
+            </div>
+
+            <button class="btn-action">⚡ [ EXECUTE QUICKHACKS ]</button>
+            <button class="btn-stop">⏹️ [ TERMINATE OVERLAY ]</button>
         </div>
     </div>
 
@@ -243,12 +361,34 @@
         setInterval(updateClock, 1000);
         updateClock();
 
-        let isNavActive = false;
+        let currentScale = 1.0;
 
+        function updateScale(val) {
+            currentScale = val / 100;
+            document.getElementById('scaleVal').innerText = currentScale.toFixed(2) + 'x';
+            
+            const clock = document.getElementById('clock');
+            const battery = document.getElementById('battery');
+
+            clock.style.fontSize = (24 * currentScale) + 'px';
+            battery.style.fontSize = (12 * currentScale) + 'px';
+        }
+
+        function setCornerPosition(pos) {
+            const hud = document.getElementById('hudWidget');
+            if (pos === 'left') {
+                hud.style.left = (35 * currentScale) + 'px';
+                hud.style.right = 'auto';
+            } else {
+                hud.style.right = (35 * currentScale) + 'px';
+                hud.style.left = 'auto';
+            }
+        }
+
+        let isNavActive = false;
         function toggleSimulatedNav() {
             isNavActive = !isNavActive;
-            const navTrace = document.getElementById('navTrace');
-            navTrace.style.display = isNavActive ? 'block' : 'none';
+            document.getElementById('navTrace').style.display = isNavActive ? 'block' : 'none';
         }
     </script>
 </body>

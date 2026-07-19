@@ -33,37 +33,37 @@ class MainActivity : Activity() {
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(36, 36, 36, 36)
-            setBackgroundColor(Color.parseColor("#080A0F")) // Cyberpunk Cyberdeck Dark
+            setPadding(32, 32, 32, 32)
+            setBackgroundColor(Color.parseColor("#04070D")) // In-Game Netrunner Dark
         }
 
-        // --- Cyberdeck Header ---
+        // --- Cyberdeck Top Bar (Cyberpunk 2077 In-Game Header) ---
         val headerCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(20, 16, 20, 16)
+            setPadding(16, 12, 16, 12)
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#121824"))
+                setColor(Color.parseColor("#09111E"))
                 setStroke(2, Color.parseColor("#00E5FF"))
-                cornerRadius = 4f
+                cornerRadius = 2f
             }
         }
 
         val subtitleText = TextView(this).apply {
-            text = "⚡ CYBERDECK v2.077 // AVAILABLE CONFIGS:"
-            textSize = 12f
-            setTextColor(Color.parseColor("#FF0055")) // Neon Pink
+            text = "CYBERDECK v 552.322"
+            textSize = 11f
+            setTextColor(Color.parseColor("#FF0055")) // Cyberpunk Red Accent
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
         }
         headerCard.addView(subtitleText)
 
         val titleText = TextView(this).apply {
-            text = "XREAL 1s & DeX Minimal HUD"
-            textSize = 22f
+            text = "AVAILABLE QUICKHACKS:"
+            textSize = 18f
             setTextColor(Color.parseColor("#FFE600")) // Cyberpunk Yellow
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 4, 0, 0)
+            setPadding(0, 2, 0, 0)
         }
         headerCard.addView(titleText)
         rootLayout.addView(headerCard)
@@ -71,23 +71,28 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = "\n" }
         rootLayout.addView(spacer1)
 
-        // --- Quickhack Card 1: HUD Scale Setting ---
+        // --- Quickhack 1: SYSTEM COLLAPSE (HUD Scale) ---
         val currentScale = prefs.getFloat(OverlayService.KEY_SCALE, 1.0f)
-        val scaleCard = createQuickhackCard("SYSTEM HUD SCALE", "READY", "1")
+        val scaleCard = createInGameQuickhackBar(
+            title = "SYSTEM COLLAPSE",
+            statusTag = "READY",
+            ramCost = "28",
+            iconText = "🗲"
+        )
 
         val scaleLabel = TextView(this).apply {
             text = "HUD Size Scale: ${String.format("%.2f", currentScale)}x"
-            textSize = 13f
+            textSize = 12f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
-            setPadding(24, 8, 24, 8)
+            setPadding(20, 8, 20, 4)
         }
         scaleCard.addView(scaleLabel)
 
         val seekBar = SeekBar(this).apply {
             max = 125 // 0.25 to 1.50 (1.25 range)
             progress = ((currentScale - 0.25f) * 100).toInt()
-            setPadding(24, 0, 24, 16)
+            setPadding(20, 0, 20, 12)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     val newScale = 0.25f + (progress / 100f)
@@ -106,16 +111,21 @@ class MainActivity : Activity() {
         scaleCard.addView(seekBar)
         rootLayout.addView(scaleCard)
 
-        val spacer2 = TextView(this).apply { text = "\n" }
+        val spacer2 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer2)
 
-        // --- Quickhack Card 2: Corner Position ---
+        // --- Quickhack 2: OVERHEAT (Corner Position) ---
         val currentPos = prefs.getString(OverlayService.KEY_POSITION, OverlayService.POS_TOP_RIGHT)
-        val posCard = createQuickhackCard("DISPLAY CORNER POSITION", "TRACEABLE", "2")
+        val posCard = createInGameQuickhackBar(
+            title = "OVERHEAT",
+            statusTag = "READY | TRACEABLE",
+            ramCost = "9",
+            iconText = "🎯"
+        )
 
         val posGroup = RadioGroup(this).apply {
             orientation = RadioGroup.HORIZONTAL
-            setPadding(24, 8, 24, 16)
+            setPadding(20, 8, 20, 12)
         }
 
         val rbTopRight = RadioButton(this).apply {
@@ -142,20 +152,25 @@ class MainActivity : Activity() {
         posCard.addView(posGroup)
         rootLayout.addView(posCard)
 
-        val spacer3 = TextView(this).apply { text = "\n" }
+        val spacer3 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer3)
 
-        // --- Quickhack Card 3: HUD Alignment Calibrator (Smooth Touch Pad + D-Pad Steps) ---
+        // --- Quickhack 3: CRIPPLE MOVEMENT (HUD Alignment Calibrator) ---
         val xOff = prefs.getInt(OverlayService.KEY_X_OFFSET, 40)
         val yOff = prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)
-        val calibrationCard = createQuickhackCard("HUD ALIGNMENT CALIBRATOR", "CALIBRATING", "3")
+        val calibrationCard = createInGameQuickhackBar(
+            title = "CRIPPLE MOVEMENT",
+            statusTag = "READY | TRACEABLE",
+            ramCost = "6",
+            iconText = "📍"
+        )
 
         val offsetLabel = TextView(this).apply {
             text = "Offset: X=$xOff, Y=$yOff"
             textSize = 12f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
-            setPadding(24, 8, 24, 8)
+            setPadding(20, 6, 20, 4)
         }
         calibrationCard.addView(offsetLabel)
 
@@ -163,7 +178,7 @@ class MainActivity : Activity() {
         val dpadLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(0, 8, 0, 8)
+            setPadding(0, 4, 0, 4)
         }
 
         fun updateOffset(dx: Int, dy: Int) {
@@ -181,10 +196,10 @@ class MainActivity : Activity() {
 
         val btnUp = Button(this).apply {
             text = "▲ UP"
-            setBackgroundColor(Color.parseColor("#121824"))
+            setBackgroundColor(Color.parseColor("#09111E"))
             setTextColor(Color.parseColor("#FFE600"))
             typeface = Typeface.MONOSPACE
-            textSize = 11f
+            textSize = 10f
             setOnClickListener { updateOffset(0, -10) }
         }
         dpadLayout.addView(btnUp)
@@ -196,19 +211,19 @@ class MainActivity : Activity() {
 
         val btnLeft = Button(this).apply {
             text = "◄ LEFT"
-            setBackgroundColor(Color.parseColor("#121824"))
+            setBackgroundColor(Color.parseColor("#09111E"))
             setTextColor(Color.parseColor("#FFE600"))
             typeface = Typeface.MONOSPACE
-            textSize = 11f
+            textSize = 10f
             setOnClickListener { updateOffset(-10, 0) }
         }
 
         val btnRight = Button(this).apply {
             text = "RIGHT ►"
-            setBackgroundColor(Color.parseColor("#121824"))
+            setBackgroundColor(Color.parseColor("#09111E"))
             setTextColor(Color.parseColor("#FFE600"))
             typeface = Typeface.MONOSPACE
-            textSize = 11f
+            textSize = 10f
             setOnClickListener { updateOffset(10, 0) }
         }
 
@@ -218,10 +233,10 @@ class MainActivity : Activity() {
 
         val btnDown = Button(this).apply {
             text = "▼ DOWN"
-            setBackgroundColor(Color.parseColor("#121824"))
+            setBackgroundColor(Color.parseColor("#09111E"))
             setTextColor(Color.parseColor("#FFE600"))
             typeface = Typeface.MONOSPACE
-            textSize = 11f
+            textSize = 10f
             setOnClickListener { updateOffset(0, 10) }
         }
         dpadLayout.addView(btnDown)
@@ -230,14 +245,14 @@ class MainActivity : Activity() {
         // Smooth Touch Trackpad
         val joystickPad = View(this).apply {
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#0A121E"))
+                setColor(Color.parseColor("#060C16"))
                 setStroke(1, Color.parseColor("#00E5FF"))
-                cornerRadius = 4f
+                cornerRadius = 2f
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                160
-            ).apply { setMargins(24, 8, 24, 8) }
+                140
+            ).apply { setMargins(20, 6, 20, 6) }
 
             var lastX = 0f
             var lastY = 0f
@@ -282,7 +297,7 @@ class MainActivity : Activity() {
 
         val btnReset = Button(this).apply {
             text = "[ RESET ALIGNMENT (40, 40) ]"
-            textSize = 10f
+            textSize = 9f
             setBackgroundColor(Color.TRANSPARENT)
             setTextColor(Color.parseColor("#FF0055"))
             setOnClickListener {
@@ -304,24 +319,24 @@ class MainActivity : Activity() {
         // --- Permission Button ---
         val btnPermission = Button(this).apply {
             text = "[ GRANT OVERLAY PERMISSION ]"
-            setBackgroundColor(Color.parseColor("#151D2A"))
+            setBackgroundColor(Color.parseColor("#121B2C"))
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
-            setPadding(0, 16, 0, 16)
+            setPadding(0, 14, 0, 14)
             setOnClickListener { checkAndRequestOverlayPermission() }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 16, 0, 0) }
+            )
         }
         rootLayout.addView(btnPermission)
 
-        val spacer4_exec = TextView(this).apply { text = "\n" }
+        val spacer4_exec = TextView(this).apply { text = " " }
         rootLayout.addView(spacer4_exec)
 
         // --- Cyberware Action Buttons ---
         val btnStart = Button(this).apply {
-            text = "⚡ [ EXECUTE: START CYBERPUNK HUD ]"
+            text = "⚡ [ EXECUTE QUICKHACKS ]"
             setBackgroundColor(Color.parseColor("#FFE600"))
             setTextColor(Color.BLACK)
             typeface = Typeface.MONOSPACE
@@ -331,7 +346,7 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 16, 0, 0) }
+            )
         }
         rootLayout.addView(btnStart)
 
@@ -339,12 +354,12 @@ class MainActivity : Activity() {
         rootLayout.addView(spacer5)
 
         val btnStop = Button(this).apply {
-            text = "⏹️ [ TERMINATE: STOP HUD ]"
+            text = "⏹️ [ TERMINATE OVERLAY ]"
             setBackgroundColor(Color.parseColor("#FF0055"))
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 16, 0, 16)
+            setPadding(0, 14, 0, 14)
             setOnClickListener { stopOverlayService() }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -363,43 +378,44 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun createQuickhackCard(title: String, tag: String, ramCost: String = "0"): LinearLayout {
+    // Creates authentic Cyberpunk 2077 In-Game Quickhack Action Bar
+    private fun createInGameQuickhackBar(
+        title: String,
+        statusTag: String,
+        ramCost: String,
+        iconText: String
+    ): LinearLayout {
         val cyan = Color.parseColor("#00E5FF")
-        val darkBlue = Color.parseColor("#0A121E")
+        val darkBg = Color.parseColor("#09111E")
 
         val cardContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 8, 0, 8) }
-        }
-
-        val mainRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 0)
-        }
-
-        val contentBox = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(24, 16, 24, 16)
+            ).apply { setMargins(0, 4, 0, 4) }
             background = GradientDrawable().apply {
-                setColor(darkBlue)
-                setStroke(2, cyan)
+                setColor(darkBg)
+                setStroke(2, cyan) // Cyberpunk Cyan Border
                 cornerRadius = 2f
             }
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
+        // Main Horizontal Quickhack Bar
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(16, 12, 16, 12)
+        }
+
+        // Left Text Stack
         val textStack = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         val titleView = TextView(this).apply {
-            text = title.uppercase()
+            text = title
             textSize = 14f
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
@@ -408,52 +424,70 @@ class MainActivity : Activity() {
         textStack.addView(titleView)
 
         val tagBox = TextView(this).apply {
-            text = tag.uppercase()
+            text = statusTag
             textSize = 9f
             setTextColor(cyan)
             typeface = Typeface.MONOSPACE
             background = GradientDrawable().apply {
                 setStroke(1, cyan)
-                cornerRadius = 2f
+                cornerRadius = 1f
             }
-            setPadding(8, 2, 8, 2)
+            setPadding(6, 1, 6, 1)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { setMargins(0, 4, 0, 0) }
         }
         textStack.addView(tagBox)
-        contentBox.addView(textStack)
+        topBar.addView(textStack)
 
-        val ramView = TextView(this).apply {
+        // RAM Cost Box (Cyberpunk 2077 In-Game RAM Badge)
+        val ramBox = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(12, 4, 12, 4)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#050A12"))
+                setStroke(1, Color.parseColor("#1B2A40"))
+            }
+        }
+
+        val ramText = TextView(this).apply {
             text = ramCost
-            textSize = 18f
+            textSize = 16f
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
-            setPadding(16, 0, 16, 0)
+            setTypeface(typeface, Typeface.BOLD)
         }
-        contentBox.addView(ramView)
+        ramBox.addView(ramText)
 
+        val ramIcon = TextView(this).apply {
+            text = " ▮"
+            textSize = 12f
+            setTextColor(cyan)
+        }
+        ramBox.addView(ramIcon)
+        topBar.addView(ramBox)
+
+        // Far Right Cyberware Icon Box
         val iconView = TextView(this).apply {
-            text = "⚡"
+            text = iconText
             textSize = 16f
             setTextColor(cyan)
             gravity = Gravity.CENTER
-            setPadding(16, 16, 16, 16)
+            setPadding(12, 10, 12, 10)
             background = GradientDrawable().apply {
-                setStroke(2, cyan)
-                cornerRadius = 2f
+                setStroke(1, cyan)
+                cornerRadius = 1f
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
-            ).apply { setMargins(8, 0, 0, 0) }
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(10, 0, 0, 0) }
         }
+        topBar.addView(iconView)
 
-        mainRow.addView(contentBox)
-        mainRow.addView(iconView)
-        cardContainer.addView(mainRow)
-
+        cardContainer.addView(topBar)
         return cardContainer
     }
 
