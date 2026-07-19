@@ -57,6 +57,20 @@
             </intent-filter>
         </service>
 
+        <!-- System Mouse Click Accessibility Driver Service -->
+        <service
+            android:name=".HeadCursorAccessibilityService"
+            android:label="DeX Head Cursor Accessibility Driver"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
     </application>
 
 </manifest>

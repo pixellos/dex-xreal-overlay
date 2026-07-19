@@ -41,6 +41,7 @@ class OverlayService : Service() {
     private var cursorY = 540f
 
     private var usbImuDriver: XrealUsbImuDriver? = null
+    private var udpImuReceiver: UdpImuReceiver? = null
     private var isNavActive = false
     private var isHudVisible = true
 
@@ -141,7 +142,7 @@ class OverlayService : Service() {
 
         setupOverlayWindow()
         setupHeadTrackedCursor()
-        initXrealUsbDriver()
+        initImuDrivers()
     }
 
     private fun setupOverlayWindow() {
@@ -272,57 +273,70 @@ class OverlayService : Service() {
         }
     }
 
-    private fun initXrealUsbDriver() {
+    private fun initImuDrivers() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, false)
         val singleTapAction = prefs.getString(KEY_SINGLE_TAP_ACTION, SINGLE_TAP_ACTION_CLICK) ?: SINGLE_TAP_ACTION_CLICK
         if (!enableHeadCursor) return
 
-        usbImuDriver = XrealUsbImuDriver(this).apply {
-            onHeadMoveListener = { deltaX, deltaY ->
-                cursorX = (cursorX + deltaX * 15f).coerceIn(0f, 1920f)
-                cursorY = (cursorY + deltaY * 15f).coerceIn(0f, 1080f)
+        fun onHeadMove(deltaX: Float, deltaY: Float) {
+            cursorX = (cursorX + deltaX * 15f).coerceIn(0f, 1920f)
+            cursorY = (cursorY + deltaY * 15f).coerceIn(0f, 1080f)
 
-                cursorParams?.let { params ->
-                    params.x = cursorX.toInt()
-                    params.y = cursorY.toInt()
-                    handler.post {
-                        try {
-                            cursorView?.let { v -> windowManager.updateViewLayout(v, params) }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                }
-            }
-
-            // Single Tap Quick Action Handler for XREAL Temple Button
-            onGlassesSingleTapListener = {
+            cursorParams?.let { params ->
+                params.x = cursorX.toInt()
+                params.y = cursorY.toInt()
                 handler.post {
-                    // Visual Flash Feedback on Reticle
-                    cursorView?.setTextColor(Color.parseColor("#FFE600"))
-                    handler.postDelayed({ cursorView?.setTextColor(Color.parseColor("#00E5FF")) }, 200)
-
-                    when (singleTapAction) {
-                        SINGLE_TAP_ACTION_TOGGLE_HUD -> {
-                            isHudVisible = !isHudVisible
-                            overlayView?.visibility = if (isHudVisible) View.VISIBLE else View.GONE
-                        }
-                        SINGLE_TAP_ACTION_RECENTER -> {
-                            cursorX = 960f
-                            cursorY = 540f
-                        }
-                        else -> {
-                            // Default: Execute Click at Head Cursor Position
-                        }
+                    try {
+                        cursorView?.let { v -> windowManager.updateViewLayout(v, params) }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
                 }
             }
         }
 
+        fun onSingleTap() {
+            handler.post {
+                cursorView?.setTextColor(Color.parseColor("#FFE600"))
+                handler.postDelayed({ cursorView?.setTextColor(Color.parseColor("#00E5FF")) }, 200)
+
+                when (singleTapAction) {
+                    SINGLE_TAP_ACTION_TOGGLE_HUD -> {
+                        isHudVisible = !isHudVisible
+                        overlayView?.visibility = if (isHudVisible) View.VISIBLE else View.GONE
+                    }
+                    SINGLE_TAP_ACTION_RECENTER -> {
+                        cursorX = 960f
+                        cursorY = 540f
+                    }
+                    else -> {
+                        // Dispatch System Click via Accessibility Service
+                        val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
+                            putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
+                            putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
+                        }
+                        sendBroadcast(clickIntent)
+                    }
+                }
+            }
+        }
+
+        // 1. Direct USB Host Driver
+        usbImuDriver = XrealUsbImuDriver(this).apply {
+            onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
+            onGlassesSingleTapListener = { onSingleTap() }
+        }
         val device = usbImuDriver?.findXrealDevice()
         if (device != null && usbImuDriver?.hasUsbPermission(device) == true) {
             usbImuDriver?.startReading(device)
+        }
+
+        // 2. Ethernet / UDP Network Listener (Port 9090)
+        udpImuReceiver = UdpImuReceiver(9090).apply {
+            onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
+            onGlassesSingleTapListener = { onSingleTap() }
+            startListening()
         }
     }
 
@@ -346,7 +360,7 @@ class OverlayService : Service() {
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Cyberpunk HUD & Head Cursor Active")
-            .setContentText("XREAL 1s Single Tap Quick Action Active")
+            .setContentText("USB & Ethernet/UDP Port 9090 Active")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
 
@@ -357,6 +371,7 @@ class OverlayService : Service() {
         super.onDestroy()
         handler.removeCallbacks(clockRunnable)
         usbImuDriver?.stopReading()
+        udpImuReceiver?.stopListening()
         try {
             unregisterReceiver(batteryReceiver)
             unregisterReceiver(navReceiver)

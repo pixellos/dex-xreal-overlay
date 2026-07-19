@@ -89,15 +89,27 @@ class MainActivity : Activity() {
             isHighlighted = true
         )
 
+        val usbStatusText = TextView(this).apply {
+            text = usbDriver.getAllConnectedUsbDevicesSummary()
+            textSize = 10f
+            setTextColor(Color.parseColor("#00E5FF"))
+            typeface = Typeface.MONOSPACE
+            setPadding(20, 6, 20, 4)
+        }
+
         val btnConnectUsb = Button(this).apply {
             text = "⚡ [ GRANT XREAL USB SENSOR PERMISSION ]"
             setBackgroundColor(Color.parseColor("#09111E"))
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
             textSize = 11f
-            setOnClickListener { requestXrealUsbPermission() }
+            setOnClickListener {
+                usbStatusText.text = usbDriver.getAllConnectedUsbDevicesSummary()
+                requestXrealUsbPermission()
+            }
         }
         imuCard.addView(btnConnectUsb)
+        imuCard.addView(usbStatusText)
 
         val cbHeadCursor = CheckBox(this).apply {
             text = "[ ENABLE XREAL 1s IMU HEAD-TRACKED CURSOR ]"
@@ -481,14 +493,10 @@ class MainActivity : Activity() {
     private fun requestXrealUsbPermission() {
         val device = usbDriver.findXrealDevice()
         if (device != null) {
-            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                PendingIntent.FLAG_MUTABLE
-            } else 0
-            val intent = PendingIntent.getBroadcast(this, 0, Intent("com.example.dexoverlay.USB_PERMISSION"), flags)
-            usbDriver.requestUsbPermission(device, intent)
-            Toast.makeText(this, "XREAL Glasses Detected! Requesting USB Permission...", Toast.LENGTH_LONG).show()
+            usbDriver.requestUsbPermission(device)
+            Toast.makeText(this, "XREAL Device Found! Prompting USB Permission...", Toast.LENGTH_LONG).show()
         } else {
-            Toast.makeText(this, "Connect XREAL 1s USB-C glasses to your phone first!", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "No USB HID Endpoint found. Check USB-C connection!", Toast.LENGTH_LONG).show()
         }
     }
 
