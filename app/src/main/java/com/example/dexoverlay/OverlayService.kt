@@ -42,6 +42,7 @@ class OverlayService : Service() {
 
     private var usbImuDriver: XrealUsbImuDriver? = null
     private var isNavActive = false
+    private var isHudVisible = true
 
     private val handler = Handler(Looper.getMainLooper())
     private val clockRunnable = object : Runnable {
@@ -239,7 +240,7 @@ class OverlayService : Service() {
         cursorView = TextView(this).apply {
             text = "✛"
             textSize = 28f
-            setTextColor(Color.parseColor("#00E5FF")) // Cyberpunk Cyan
+            setTextColor(Color.parseColor("#00E5FF"))
             setShadowLayer(10f, 0f, 0f, Color.parseColor("#00E5FF"))
             gravity = Gravity.CENTER
         }
@@ -274,6 +275,7 @@ class OverlayService : Service() {
     private fun initXrealUsbDriver() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, false)
+        val singleTapAction = prefs.getString(KEY_SINGLE_TAP_ACTION, SINGLE_TAP_ACTION_CLICK) ?: SINGLE_TAP_ACTION_CLICK
         if (!enableHeadCursor) return
 
         usbImuDriver = XrealUsbImuDriver(this).apply {
@@ -294,13 +296,26 @@ class OverlayService : Service() {
                 }
             }
 
-            onGlassesButtonClickListener = {
-                // XREAL Temple Button Click Feedback Animation
+            // Single Tap Quick Action Handler for XREAL Temple Button
+            onGlassesSingleTapListener = {
                 handler.post {
-                    cursorView?.setTextColor(Color.parseColor("#FFE600")) // Flash Yellow
-                    handler.postDelayed({
-                        cursorView?.setTextColor(Color.parseColor("#00E5FF"))
-                    }, 200)
+                    // Visual Flash Feedback on Reticle
+                    cursorView?.setTextColor(Color.parseColor("#FFE600"))
+                    handler.postDelayed({ cursorView?.setTextColor(Color.parseColor("#00E5FF")) }, 200)
+
+                    when (singleTapAction) {
+                        SINGLE_TAP_ACTION_TOGGLE_HUD -> {
+                            isHudVisible = !isHudVisible
+                            overlayView?.visibility = if (isHudVisible) View.VISIBLE else View.GONE
+                        }
+                        SINGLE_TAP_ACTION_RECENTER -> {
+                            cursorX = 960f
+                            cursorY = 540f
+                        }
+                        else -> {
+                            // Default: Execute Click at Head Cursor Position
+                        }
+                    }
                 }
             }
         }
@@ -331,7 +346,7 @@ class OverlayService : Service() {
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Cyberpunk HUD & Head Cursor Active")
-            .setContentText("XREAL 1s IMU Head Tracking Active")
+            .setContentText("XREAL 1s Single Tap Quick Action Active")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
 
@@ -366,9 +381,14 @@ class OverlayService : Service() {
         const val KEY_X_OFFSET = "hud_x_offset"
         const val KEY_Y_OFFSET = "hud_y_offset"
         const val KEY_ENABLE_HEAD_CURSOR = "enable_head_cursor"
+        const val KEY_SINGLE_TAP_ACTION = "single_tap_action"
 
         const val POS_TOP_RIGHT = "TOP_RIGHT"
         const val POS_TOP_LEFT = "TOP_LEFT"
+
+        const val SINGLE_TAP_ACTION_CLICK = "CLICK"
+        const val SINGLE_TAP_ACTION_TOGGLE_HUD = "TOGGLE_HUD"
+        const val SINGLE_TAP_ACTION_RECENTER = "RECENTER"
 
         const val ACTION_UPDATE_POSITION = "com.example.dexoverlay.UPDATE_POSITION"
     }

@@ -16,7 +16,7 @@ class XrealUsbImuDriver(private val context: Context) {
     private var readThread: Thread? = null
 
     var onHeadMoveListener: ((deltaX: Float, deltaY: Float) -> Unit)? = null
-    var onGlassesButtonClickListener: (() -> Unit)? = null
+    var onGlassesSingleTapListener: (() -> Unit)? = null
 
     fun findXrealDevice(): UsbDevice? {
         return usbManager.deviceList.values.find { device ->
@@ -36,7 +36,6 @@ class XrealUsbImuDriver(private val context: Context) {
         try {
             val connection = usbManager.openDevice(device) ?: return false
             
-            // XREAL IMU & Glasses Button HID Interface is usually interface 4
             var targetIntf: UsbInterface? = null
             for (i in 0 until device.interfaceCount) {
                 val intf = device.getInterface(i)
@@ -58,19 +57,18 @@ class XrealUsbImuDriver(private val context: Context) {
             readThread = Thread {
                 val buffer = ByteArray(64)
                 var lastButtonState = false
+                var lastPressTime = 0L
 
                 while (isReading) {
                     val bytesRead = connection.bulkTransfer(endpoint, buffer, buffer.size, 100)
                     if (bytesRead >= 16) {
-                        // Decode raw pitch and yaw gyro bytes (signed short 16-bit integers)
+                        // Gyro Angular Velocity for Head Tracking
                         val rawGyroX = ((buffer[3].toInt() and 0xFF) shl 8) or (buffer[2].toInt() and 0xFF)
                         val rawGyroY = ((buffer[5].toInt() and 0xFF) shl 8) or (buffer[4].toInt() and 0xFF)
 
-                        // Convert short to signed int
                         val gyroX = if (rawGyroX > 32767) rawGyroX - 65536 else rawGyroX
                         val gyroY = if (rawGyroY > 32767) rawGyroY - 65536 else rawGyroY
 
-                        // Map angular velocity to delta X and Y cursor offset
                         val deltaX = (gyroY / 1000f)
                         val deltaY = -(gyroX / 1000f)
 
@@ -78,10 +76,16 @@ class XrealUsbImuDriver(private val context: Context) {
                             onHeadMoveListener?.invoke(deltaX, deltaY)
                         }
 
-                        // Decode XREAL Temple Button Byte (Byte 10 or 12 in HID Packet)
-                        val buttonPressed = (buffer[10].toInt() and 0x01) != 0
+                        // XREAL Quick Action Multi-Function Temple Button (Byte 10 or 12)
+                        val buttonPressed = (buffer[10].toInt() and 0x01) != 0 || (buffer[12].toInt() and 0x01) != 0
+                        val currentTime = System.currentTimeMillis()
+
+                        // Single Tap Detection logic
                         if (buttonPressed && !lastButtonState) {
-                            onGlassesButtonClickListener?.invoke()
+                            if (currentTime - lastPressTime > 250) { // Debounce threshold
+                                onGlassesSingleTapListener?.invoke()
+                                lastPressTime = currentTime
+                            }
                         }
                         lastButtonState = buttonPressed
                     }

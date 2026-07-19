@@ -74,8 +74,10 @@ class MainActivity : Activity() {
 
         // --- Quickhack 1: CYBERWARE IMU (XREAL Head Tracking & Button Click Driver) ---
         val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, false)
+        val singleTapAction = prefs.getString(OverlayService.KEY_SINGLE_TAP_ACTION, OverlayService.SINGLE_TAP_ACTION_CLICK) ?: OverlayService.SINGLE_TAP_ACTION_CLICK
+
         val imuCard = createAuthenticQuickhackSlot(
-            name = "CYBERWARE IMU // HEAD CURSOR & BUTTON",
+            name = "CYBERWARE IMU // HEAD CURSOR & SINGLE TAP",
             tier = "ICONIC // TIER 5",
             statusTag = "READY | INSTALLED",
             ramCost = "24",
@@ -88,14 +90,64 @@ class MainActivity : Activity() {
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
             isChecked = enableHeadCursor
-            setPadding(20, 8, 20, 8)
+            setPadding(20, 8, 20, 4)
             setOnCheckedChangeListener { _, isChecked ->
                 prefs.edit().putBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, isChecked).apply()
-                Toast.makeText(this@MainActivity, "Head-tracked cursor ${if (isChecked) "ENABLED" else "DISABLED"}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "Head cursor ${if (isChecked) "ENABLED" else "DISABLED"}", Toast.LENGTH_SHORT).show()
                 restartOverlayServiceIfRunning()
             }
         }
         imuCard.addView(cbHeadCursor)
+
+        val tapLabel = TextView(this).apply {
+            text = "XREAL Temple Button Single Tap Action:"
+            textSize = 11f
+            setTextColor(Color.parseColor("#FFE600"))
+            typeface = Typeface.MONOSPACE
+            setPadding(20, 6, 20, 2)
+        }
+        imuCard.addView(tapLabel)
+
+        val tapGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+            setPadding(20, 2, 20, 10)
+        }
+
+        val rbClick = RadioButton(this).apply {
+            text = "(●) Click at Head Cursor Position"
+            setTextColor(Color.WHITE)
+            typeface = Typeface.MONOSPACE
+            isChecked = singleTapAction == OverlayService.SINGLE_TAP_ACTION_CLICK
+        }
+        val rbToggleHud = RadioButton(this).apply {
+            text = "( ) Toggle Cyberpunk HUD On/Off"
+            setTextColor(Color.WHITE)
+            typeface = Typeface.MONOSPACE
+            isChecked = singleTapAction == OverlayService.SINGLE_TAP_ACTION_TOGGLE_HUD
+        }
+        val rbRecenter = RadioButton(this).apply {
+            text = "( ) Recenter Cursor to Screen Center"
+            setTextColor(Color.WHITE)
+            typeface = Typeface.MONOSPACE
+            isChecked = singleTapAction == OverlayService.SINGLE_TAP_ACTION_RECENTER
+        }
+
+        tapGroup.addView(rbClick)
+        tapGroup.addView(rbToggleHud)
+        tapGroup.addView(rbRecenter)
+
+        tapGroup.setOnCheckedChangeListener { _, checkedId ->
+            val selectedAction = when (checkedId) {
+                rbToggleHud.id -> OverlayService.SINGLE_TAP_ACTION_TOGGLE_HUD
+                rbRecenter.id -> OverlayService.SINGLE_TAP_ACTION_RECENTER
+                else -> OverlayService.SINGLE_TAP_ACTION_CLICK
+            }
+            prefs.edit().putString(OverlayService.KEY_SINGLE_TAP_ACTION, selectedAction).apply()
+            Toast.makeText(this, "Single Tap Action Updated!", Toast.LENGTH_SHORT).show()
+            restartOverlayServiceIfRunning()
+        }
+        imuCard.addView(tapGroup)
+
         rootLayout.addView(imuCard)
 
         val spacer_imu = TextView(this).apply { text = " " }
@@ -210,7 +262,6 @@ class MainActivity : Activity() {
         }
         calibrationCard.addView(offsetLabel)
 
-        // D-Pad Direction Button Panel
         val dpadLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -278,7 +329,6 @@ class MainActivity : Activity() {
         dpadLayout.addView(btnDown)
         calibrationCard.addView(dpadLayout)
 
-        // Smooth Touch Trackpad
         val joystickPad = View(this).apply {
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#060C16"))
