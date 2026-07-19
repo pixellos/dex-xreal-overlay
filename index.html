@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DeX & XREAL Overlay PoC Simulator</title>
-    <!-- Leaflet OpenStreetMap for interactive map demo without requiring API keys -->
+    <title>Cyberpunk DeX & XREAL HUD Simulator</title>
+    <!-- Leaflet OpenStreetMap for interactive map demo -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -12,11 +12,11 @@
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', 'Courier New', monospace;
         }
 
         body {
-            background-color: #0d0f12;
+            background-color: #080a0f;
             color: #ffffff;
             display: flex;
             flex-direction: column;
@@ -34,6 +34,7 @@
             color: #00E5FF;
             font-size: 26px;
             margin-bottom: 6px;
+            text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
         }
 
         header p {
@@ -50,7 +51,7 @@
             justify-content: center;
         }
 
-        /* XREAL Glasses Field of View Display Simulator */
+        /* XREAL Display Simulator */
         .xreal-display {
             position: relative;
             width: 800px;
@@ -58,66 +59,109 @@
             background: #000;
             border-radius: 16px;
             overflow: hidden;
-            box-shadow: 0 0 30px rgba(0, 229, 255, 0.2);
-            border: 2px solid #1e293b;
+            box-shadow: 0 0 35px rgba(0, 229, 255, 0.25);
+            border: 2px solid #1a2332;
         }
 
         .xreal-badge {
             position: absolute;
             top: 12px;
             left: 16px;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.8);
             color: #00E5FF;
-            padding: 4px 10px;
+            padding: 4px 12px;
             border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
+            font-size: 11px;
+            font-weight: 700;
             z-index: 10;
-            border: 1px solid rgba(0, 229, 255, 0.3);
+            border: 1px solid rgba(0, 229, 255, 0.4);
+            letter-spacing: 1px;
         }
 
-        /* Video Background Simulator */
         .video-simulator {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
 
-        /* Floating Overlay Widget */
-        .floating-overlay {
+        /* Cyberpunk Minimal Floating Overlay */
+        .cyberpunk-hud {
             position: absolute;
             top: 30px;
             right: 30px;
-            background: rgba(0, 0, 0, 0.65);
-            backdrop-filter: blur(8px);
-            border-radius: 14px;
-            padding: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-            cursor: move;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
             z-index: 100;
-            transition: opacity 0.2s ease, background 0.3s ease;
             user-select: none;
+            transition: all 0.3s ease;
         }
 
-        .overlay-clock {
-            font-size: 20px;
-            font-weight: 700;
-            color: #00E5FF;
-            margin-bottom: 8px;
+        .hud-header {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(8px);
+            padding: 6px 14px;
+            border-radius: 20px;
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            box-shadow: 0 0 15px rgba(0, 229, 255, 0.2);
+        }
+
+        .hud-clock {
+            font-size: 18px;
+            font-weight: 700;
+            color: #00E5FF;
+            letter-spacing: 1px;
+            text-shadow: 0 0 8px rgba(0, 229, 255, 0.8);
+        }
+
+        .hud-divider {
+            color: #445566;
+            font-size: 12px;
+        }
+
+        .hud-battery {
+            font-size: 14px;
+            font-weight: 700;
+            color: #FFE600;
+            text-shadow: 0 0 6px rgba(255, 230, 0, 0.6);
+        }
+
+        /* Nav Turn-by-Turn Card */
+        .nav-card {
+            background: rgba(17, 0, 34, 0.85);
+            border: 1px solid rgba(255, 0, 85, 0.4);
+            border-radius: 10px;
+            padding: 10px 14px;
+            color: #fff;
+            box-shadow: 0 0 20px rgba(255, 0, 85, 0.3);
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .nav-title {
+            color: #FF0055;
+            font-weight: 700;
+            font-size: 13px;
+            margin-bottom: 2px;
             letter-spacing: 0.5px;
+        }
+
+        .nav-sub {
+            font-size: 11px;
+            color: #d0d8e0;
         }
 
         .map-container {
             width: 280px;
-            height: 180px;
-            border-radius: 8px;
+            height: 170px;
+            border-radius: 10px;
             overflow: hidden;
             opacity: 0.75;
-            transition: opacity 0.2s ease;
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            display: none;
         }
 
         #map {
@@ -125,22 +169,22 @@
             height: 100%;
         }
 
-        /* Control Panel */
+        /* Controls Panel */
         .controls-panel {
             flex: 1;
-            min-width: 300px;
-            background: #161b22;
-            padding: 20px;
+            min-width: 320px;
+            background: #121824;
+            padding: 22px;
             border-radius: 16px;
-            border: 1px solid #30363d;
+            border: 1px solid #243044;
             height: fit-content;
         }
 
         .controls-panel h2 {
             font-size: 18px;
-            color: #ffffff;
+            color: #00E5FF;
             margin-bottom: 16px;
-            border-bottom: 1px solid #30363d;
+            border-bottom: 1px solid #243044;
             padding-bottom: 10px;
         }
 
@@ -153,11 +197,7 @@
             font-size: 13px;
             color: #8b949e;
             margin-bottom: 6px;
-        }
-
-        .control-group input[type="range"] {
-            width: 100%;
-            accent-color: #00E5FF;
+            font-weight: 600;
         }
 
         .btn {
@@ -177,147 +217,138 @@
             background: #2ea043;
         }
 
-        .btn-toggle {
-            background: #1f6feb;
+        .btn-cyan {
+            background: #00E5FF;
+            color: #000;
         }
 
-        .btn-toggle:hover {
-            background: #388bfd;
+        .btn-cyan:hover {
+            background: #33ebff;
         }
 
-        .info-box {
-            background: #0d1117;
-            border: 1px solid #30363d;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 12px;
-            color: #8b949e;
-            line-height: 1.5;
-            margin-top: 16px;
-        }
-
-        .info-box span {
-            color: #00E5FF;
-            font-weight: bold;
+        .select-input {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 6px;
+            background: #090d14;
+            color: #fff;
+            border: 1px solid #243044;
+            margin-bottom: 10px;
         }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>👓 Samsung DeX & XREAL 1s Overlay PoC Simulator</h1>
-        <p>Interactive local prototype: Floating clock + Semi-transparent Google Maps over full-screen video</p>
+        <h1>👓 Cyberpunk DeX HUD & Google Maps Sync</h1>
+        <p>Minimal AR HUD with Battery Indicator & Google Maps Turn-by-Turn Auto-Sync</p>
     </header>
 
     <div class="main-container">
         <!-- XREAL Display Simulator -->
         <div class="xreal-display" id="xrealDisplay">
-            <div class="xreal-badge">XREAL 1s (DeX 1080p FOV)</div>
+            <div class="xreal-badge">XREAL 1s • CYBERPUNK HUD</div>
             
-            <!-- Video Playing in DeX -->
             <video class="video-simulator" autoplay loop muted poster="https://images.unsplash.com/photo-1534447677768-be436bb09401?w=1200">
                 <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
             </video>
 
-            <!-- Floating Overlay Widget -->
-            <div class="floating-overlay" id="overlayWidget">
-                <div class="overlay-clock" id="clock">🕒 00:00:00</div>
+            <!-- Cyberpunk HUD Overlay -->
+            <div class="cyberpunk-hud" id="hudWidget">
+                <div class="hud-header">
+                    <div class="hud-clock" id="clock">17:14:05</div>
+                    <div class="hud-divider">│</div>
+                    <div class="hud-battery" id="battery">⚡ 88%</div>
+                </div>
+
+                <!-- Turn-by-Turn Card -->
+                <div class="nav-card" id="navCard">
+                    <div class="nav-title" id="navTitle">🪧 200m • Turn Right</div>
+                    <div class="nav-sub" id="navSub">Main St towards City Center</div>
+                </div>
+
                 <div class="map-container" id="mapContainer">
                     <div id="map"></div>
                 </div>
             </div>
         </div>
 
-        <!-- Local Controls Panel -->
+        <!-- Controls Panel -->
         <div class="controls-panel">
-            <h2>🎛️ PoC Controls</h2>
-
-            <button class="btn btn-toggle" onclick="toggleOverlay()">👁️ Toggle Overlay Visibility</button>
-            <button class="btn" onclick="resetPosition()">📍 Reset Corner Position</button>
+            <h2>🎛️ HUD Configuration</h2>
 
             <div class="control-group">
-                <label for="opacitySlider">Map Opacity (Semi-Transparency): <span id="opacityVal">75%</span></label>
-                <input type="range" id="opacitySlider" min="10" max="100" value="75" oninput="updateOpacity(this.value)">
-            </div>
-
-            <div class="control-group">
-                <label for="bgStyle">Overlay Background Shader:</label>
-                <select id="bgStyle" onchange="updateBgStyle(this.value)" style="width:100%; padding:8px; border-radius:6px; background:#0d1117; color:#fff; border:1px solid #30363d;">
-                    <option value="glass">Semi-Transparent Glass (#99000000)</option>
-                    <option value="oled">XREAL True-Black OLED (#00000000)</option>
-                    <option value="dark">Dark Solid (#E6000000)</option>
+                <label>📍 HUD Position:</label>
+                <select class="select-input" onchange="setHudPosition(this.value)">
+                    <option value="top-right">Top-Right Corner</option>
+                    <option value="top-left">Top-Left Corner</option>
                 </select>
             </div>
 
-            <div class="info-box">
-                <span>Direct Local Preview Note:</span><br>
-                Drag the floating clock/map widget around the XREAL display frame above to test positioning. In XREAL glasses, True-Black OLED mode renders background as completely transparent!
+            <div class="control-group">
+                <label>🗺️ Map & Navigation Mode:</label>
+                <select class="select-input" onchange="setMapMode(this.value)">
+                    <option value="auto">Auto-Show Only When Nav Active (Recommended)</option>
+                    <option value="always">Always Show Map</option>
+                    <option value="off">Disabled (Clock & Battery Only)</option>
+                </select>
+            </div>
+
+            <button class="btn btn-cyan" onclick="toggleSimulatedNav()">🚘 Simulate Active Google Maps Nav</button>
+
+            <div style="background:#090d14; padding:12px; border-radius:8px; font-size:12px; color:#8b949e; margin-top:16px;">
+                <span style="color:#00E5FF; font-weight:bold;">Real App Sync Note:</span><br>
+                In the Android app, <code style="color:#FFE600;">MapsNavListenerService</code> automatically captures real-time Google Maps turn directions and battery level updates!
             </div>
         </div>
     </div>
 
     <script>
-        // Live Clock Loop
         function updateClock() {
             const now = new Date();
-            const timeStr = now.toLocaleTimeString();
-            document.getElementById('clock').innerHTML = `🕒 ${timeStr}`;
+            const timeStr = now.toTimeString().split(' ')[0];
+            document.getElementById('clock').innerText = timeStr;
         }
         setInterval(updateClock, 1000);
         updateClock();
 
-        // Initialize Map
-        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([37.7749, -122.4194], 13);
+        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([37.7749, -122.4194], 14);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
-        // Control handlers
-        function toggleOverlay() {
-            const widget = document.getElementById('overlayWidget');
-            widget.style.display = widget.style.display === 'none' ? 'block' : 'none';
-        }
+        let isNavActive = false;
+        let mapMode = 'auto';
 
-        function updateOpacity(val) {
-            document.getElementById('opacityVal').innerText = val + '%';
-            document.getElementById('mapContainer').style.opacity = val / 100;
-        }
-
-        function updateBgStyle(style) {
-            const widget = document.getElementById('overlayWidget');
-            if (style === 'glass') {
-                widget.style.background = 'rgba(0, 0, 0, 0.65)';
-            } else if (style === 'oled') {
-                widget.style.background = 'transparent';
-                widget.style.border = 'none';
-            } else if (style === 'dark') {
-                widget.style.background = 'rgba(0, 0, 0, 0.95)';
+        function setHudPosition(pos) {
+            const hud = document.getElementById('hudWidget');
+            if (pos === 'top-left') {
+                hud.style.left = '30px';
+                hud.style.right = 'auto';
+            } else {
+                hud.style.right = '30px';
+                hud.style.left = 'auto';
             }
         }
 
-        function resetPosition() {
-            const widget = document.getElementById('overlayWidget');
-            widget.style.top = '30px';
-            widget.style.right = '30px';
-            widget.style.left = 'auto';
+        function setMapMode(mode) {
+            mapMode = mode;
+            updateVisibility();
         }
 
-        // Draggable Widget Logic for Demo
-        const widget = document.getElementById('overlayWidget');
-        let isDragging = false, offset = [0, 0];
+        function toggleSimulatedNav() {
+            isNavActive = !isNavActive;
+            updateVisibility();
+        }
 
-        widget.addEventListener('mousedown', (e) => {
-            isDragging = true;
-            offset = [widget.offsetLeft - e.clientX, widget.offsetTop - e.clientY];
-        });
+        function updateVisibility() {
+            const navCard = document.getElementById('navCard');
+            const mapContainer = document.getElementById('mapContainer');
 
-        document.addEventListener('mouseup', () => isDragging = false);
+            const showNav = isNavActive && (mapMode === 'auto' || mapMode === 'always');
+            const showMap = mapMode === 'always' || (mapMode === 'auto' && isNavActive);
 
-        document.addEventListener('mousemove', (e) => {
-            if (isDragging) {
-                widget.style.left = (e.clientX + offset[0]) + 'px';
-                widget.style.top = (e.clientY + offset[1]) + 'px';
-                widget.style.right = 'auto';
-            }
-        });
+            navCard.style.display = showNav ? 'block' : 'none';
+            mapContainer.style.display = showMap ? 'block' : 'none';
+        }
     </script>
 </body>
 </html>
