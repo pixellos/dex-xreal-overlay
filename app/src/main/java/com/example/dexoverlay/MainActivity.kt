@@ -76,7 +76,7 @@ class MainActivity : Activity() {
         headerCard.addView(headerText)
 
         val statusTag = TextView(this).apply {
-            text = "[ WEBXR DEVICE API ENGINE ]"
+            text = "[ ENGINE SELECTOR ]"
             textSize = 10f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -87,13 +87,57 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
+        // --- Card 0: Engine Mode Selector (WebXR vs Direct USB) ---
+        val currentEngine = prefs.getString(OverlayService.KEY_ENGINE_MODE, OverlayService.ENGINE_WEBXR) ?: OverlayService.ENGINE_WEBXR
+        val engineCard = createCompactCard("⚡ CHOOSE HEAD TRACKING ENGINE", "#FFE600")
+
+        val engineGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+
+        val rbWebXR = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = "🌐 WebXR Device API Engine (Recommended - Zero USB Prompts)"
+            setTextColor(Color.parseColor("#00E5FF"))
+            textSize = 11f
+            typeface = Typeface.MONOSPACE
+            isChecked = (currentEngine == OverlayService.ENGINE_WEBXR)
+        }
+
+        val rbDirectUsb = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = "🔌 Direct USB-C Hardware Cable Mode"
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            typeface = Typeface.MONOSPACE
+            isChecked = (currentEngine == OverlayService.ENGINE_DIRECT_USB)
+        }
+
+        engineGroup.addView(rbWebXR)
+        engineGroup.addView(rbDirectUsb)
+
+        engineGroup.setOnCheckedChangeListener { group, checkedId ->
+            val checkedRb = group.findViewById<RadioButton>(checkedId)
+            if (checkedRb != null && checkedRb.isPressed) {
+                val selectedEngine = if (checkedId == rbWebXR.id) OverlayService.ENGINE_WEBXR else OverlayService.ENGINE_DIRECT_USB
+                prefs.edit().putString(OverlayService.KEY_ENGINE_MODE, selectedEngine).apply()
+                Toast.makeText(this, "Engine set to: ${if (selectedEngine == OverlayService.ENGINE_WEBXR) "WebXR Device API" else "Direct USB Mode"}", Toast.LENGTH_SHORT).show()
+                restartOverlayServiceIfRunning()
+            }
+        }
+        engineCard.addView(engineGroup)
+        rootLayout.addView(engineCard)
+
+        val spacer_engine = TextView(this).apply { text = " " }
+        rootLayout.addView(spacer_engine)
+
         // --- Card 1: Head Tracking Control & WebXR Engine ---
         val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, true)
 
-        val connCard = createCompactCard("🌐 WEBXR DEVICE API HEAD CURSOR", "#00E5FF")
+        val connCard = createCompactCard("👓 XREAL 1s HEAD CURSOR & SYSTEM CLICKS", "#00E5FF")
 
         val cbHeadCursor = CheckBox(this).apply {
-            text = " Enable WebXR Head Tracking Cursor"
+            text = " Enable Head Tracking Cursor Reticle"
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             textSize = 12f
@@ -101,7 +145,7 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { buttonView, isChecked ->
                 if (buttonView.isPressed) {
                     prefs.edit().putBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, isChecked).apply()
-                    Toast.makeText(this@MainActivity, "WebXR Cursor ${if (isChecked) "ON" else "OFF"}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Head Cursor ${if (isChecked) "ON" else "OFF"}", Toast.LENGTH_SHORT).show()
                     restartOverlayServiceIfRunning()
                 }
             }

@@ -278,6 +278,8 @@ class OverlayService : Service() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, true)
         val singleTapAction = prefs.getString(KEY_SINGLE_TAP_ACTION, SINGLE_TAP_ACTION_CLICK) ?: SINGLE_TAP_ACTION_CLICK
+        val engineMode = prefs.getString(KEY_ENGINE_MODE, ENGINE_WEBXR) ?: ENGINE_WEBXR
+
         if (!enableHeadCursor) return
 
         fun onHeadMove(deltaX: Float, deltaY: Float) {
@@ -322,24 +324,26 @@ class OverlayService : Service() {
             }
         }
 
-        // 1. WebXR Device API Engine Bridge
-        webXrBridge = WebXrImuBridge(this).apply {
-            onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
-            onGlassesSingleTapListener = { onSingleTap() }
-            startBridge()
+        if (engineMode == ENGINE_WEBXR) {
+            // WebXR Device API Engine Bridge (Default - Zero Permission Prompt)
+            webXrBridge = WebXrImuBridge(this).apply {
+                onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
+                onGlassesSingleTapListener = { onSingleTap() }
+                startBridge()
+            }
+        } else {
+            // Direct USB-C Hardware Driver Mode
+            usbImuDriver = XrealUsbImuDriver(this).apply {
+                onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
+                onGlassesSingleTapListener = { onSingleTap() }
+            }
+            val device = usbImuDriver?.findXrealDevice()
+            if (device != null && usbImuDriver?.hasUsbPermission(device) == true) {
+                usbImuDriver?.startReading(device)
+            }
         }
 
-        // 2. Direct XREAL Headset USB Hardware Driver
-        usbImuDriver = XrealUsbImuDriver(this).apply {
-            onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
-            onGlassesSingleTapListener = { onSingleTap() }
-        }
-        val device = usbImuDriver?.findXrealDevice()
-        if (device != null && usbImuDriver?.hasUsbPermission(device) == true) {
-            usbImuDriver?.startReading(device)
-        }
-
-        // 3. Ethernet / UDP Network Receiver (Port 9090)
+        // Ethernet / UDP Network Receiver (Port 9090)
         udpImuReceiver = UdpImuReceiver(9090).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             onGlassesSingleTapListener = { onSingleTap() }
@@ -366,8 +370,8 @@ class OverlayService : Service() {
         }
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Cyberpunk HUD & WebXR Engine Active")
-            .setContentText("WebXR Device API Pose Tracking Active")
+            .setContentTitle("Cyberpunk HUD Active")
+            .setContentText("Head Tracking Active")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
 
@@ -405,6 +409,10 @@ class OverlayService : Service() {
         const val KEY_Y_OFFSET = "hud_y_offset"
         const val KEY_ENABLE_HEAD_CURSOR = "enable_head_cursor"
         const val KEY_SINGLE_TAP_ACTION = "single_tap_action"
+        const val KEY_ENGINE_MODE = "hud_engine_mode"
+
+        const val ENGINE_WEBXR = "WEBXR"
+        const val ENGINE_DIRECT_USB = "DIRECT_USB"
 
         const val POS_TOP_RIGHT = "TOP_RIGHT"
         const val POS_TOP_LEFT = "TOP_LEFT"
