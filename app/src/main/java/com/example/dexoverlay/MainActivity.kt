@@ -60,7 +60,7 @@ class MainActivity : Activity() {
         headerCard.addView(headerText)
 
         val statusTag = TextView(this).apply {
-            text = "[ GYROSCOPE ACTIVE ]"
+            text = "[ UDP PORT 9090 SOCKET ]"
             textSize = 10f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -71,13 +71,13 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
-        // --- Card 1: Motion Sensor & System Click Driver ---
+        // --- Card 1: XREAL Network Socket & System Click Driver ---
         val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, true)
 
-        val connCard = createCompactCard("👓 GYROSCOPE HEAD CURSOR & SYSTEM CLICKS", "#00E5FF")
+        val connCard = createCompactCard("🌐 XREAL SOCKET RECEIVER (PORT 9090)", "#00E5FF")
 
         val cbHeadCursor = CheckBox(this).apply {
-            text = " Enable Motion Gyroscope Head Cursor"
+            text = " Enable XREAL Socket Head Cursor"
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             textSize = 12f

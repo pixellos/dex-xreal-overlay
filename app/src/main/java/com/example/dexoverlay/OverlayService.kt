@@ -40,7 +40,6 @@ class OverlayService : Service() {
     private var cursorX = 960f
     private var cursorY = 540f
 
-    private var phoneImuDriver: PhoneImuDriver? = null
     private var udpImuReceiver: UdpImuReceiver? = null
     private var isNavActive = false
     private var isHudVisible = true
@@ -321,13 +320,8 @@ class OverlayService : Service() {
             }
         }
 
-        // 1. Gyroscope Motion Sensor Driver
-        phoneImuDriver = PhoneImuDriver(this).apply {
-            onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
-            startListening()
-        }
-
-        // 2. Ethernet / UDP Network Receiver (Port 9090)
+        // Ethernet / UDP Network Socket Receiver (Port 9090)
+        // High-Speed IMU stream matching dripster82/ar_workspace_manager_for_xreal socket architecture
         udpImuReceiver = UdpImuReceiver(9090).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             onGlassesSingleTapListener = { onSingleTap() }
@@ -354,8 +348,8 @@ class OverlayService : Service() {
         }
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Cyberpunk HUD & Head Cursor Active")
-            .setContentText("Gyroscope Motion Tracking Active")
+            .setContentTitle("Cyberpunk HUD & XREAL Socket Active")
+            .setContentText("UDP Port 9090 Socket Engine Listening")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
 
@@ -365,7 +359,6 @@ class OverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacks(clockRunnable)
-        phoneImuDriver?.stopListening()
         udpImuReceiver?.stopListening()
         try {
             unregisterReceiver(batteryReceiver)
