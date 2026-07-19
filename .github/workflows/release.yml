@@ -13,7 +13,6 @@ jobs:
     permissions:
       contents: write
 
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -28,13 +27,18 @@ jobs:
       - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
+      - name: Build Signed Release APK
+        run: ./gradlew assembleRelease
 
-      - name: Create GitHub Release & Upload APK
+      - name: Prepare Named Release APK Asset
+        run: |
+          mkdir -p release_assets
+          cp app/build/outputs/apk/release/*.apk release_assets/Cyberpunk-DeX-HUD-${{ github.ref_name }}.apk
+
+      - name: Create GitHub Release & Upload Signed APK
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: release_assets/*.apk
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false

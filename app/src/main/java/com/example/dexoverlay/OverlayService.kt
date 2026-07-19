@@ -64,7 +64,7 @@ class OverlayService : Service() {
                     }
 
                     val prefix = if (isCharging) "⚡" else ""
-                    batteryTextView?.text = "$prefix $bars $batteryPct%"
+                    batteryTextView?.text = "$prefix $bars"
                     batteryTextView?.setTextColor(
                         when {
                             isCharging -> Color.parseColor("#00FF66")
@@ -100,8 +100,15 @@ class OverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         startForegroundServiceNotification()
-        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        registerReceiver(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE))
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), RECEIVER_NOT_EXPORTED)
+            registerReceiver(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE), RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            registerReceiver(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE))
+        }
+
         setupOverlayWindow()
     }
 
@@ -110,7 +117,10 @@ class OverlayService : Service() {
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val position = prefs.getString(KEY_POSITION, POS_TOP_RIGHT) ?: POS_TOP_RIGHT
-        val hudScale = prefs.getFloat(KEY_SCALE, 1.0f).coerceIn(0.75f, 1.5f)
+        val hudScale = prefs.getFloat(KEY_SCALE, 1.0f).coerceIn(0.25f, 1.5f)
+        
+        val xOffset = prefs.getInt(KEY_X_OFFSET, 40)
+        val yOffset = prefs.getInt(KEY_Y_OFFSET, 40)
 
         val gravityCorner = if (position == POS_TOP_LEFT) {
             Gravity.TOP or Gravity.START
@@ -132,8 +142,8 @@ class OverlayService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = gravityCorner
-            x = (40 * hudScale).toInt()
-            y = (40 * hudScale).toInt()
+            x = (xOffset * hudScale).toInt()
+            y = (yOffset * hudScale).toInt()
         }
 
         // 100% Pure Transparent Root Container for XREAL AR Micro-OLED
@@ -170,7 +180,7 @@ class OverlayService : Service() {
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
-            text = "▮▮▮▮▮ --%"
+            text = "▮▮▮▮▮"
         }
         headerRow.addView(batteryTextView)
 
@@ -240,6 +250,8 @@ class OverlayService : Service() {
         const val PREFS_NAME = "dex_hud_prefs"
         const val KEY_POSITION = "hud_position"
         const val KEY_SCALE = "hud_scale"
+        const val KEY_X_OFFSET = "hud_x_offset"
+        const val KEY_Y_OFFSET = "hud_y_offset"
 
         const val POS_TOP_RIGHT = "TOP_RIGHT"
         const val POS_TOP_LEFT = "TOP_LEFT"

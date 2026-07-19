@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
+import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.RadioButton
@@ -84,21 +85,20 @@ class MainActivity : Activity() {
         scaleCard.addView(scaleLabel)
 
         val seekBar = SeekBar(this).apply {
-            max = 75 // 0 to 75 mapped to 0.75x -> 1.50x
-            progress = ((currentScale - 0.75f) * 100).toInt()
+            max = 125 // 0.25 to 1.50 (1.25 range)
+            progress = ((currentScale - 0.25f) * 100).toInt()
             setPadding(24, 0, 24, 16)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    val newScale = 0.75f + (progress / 100f)
+                    val newScale = 0.25f + (progress / 100f)
                     scaleLabel.text = "HUD Size Scale: ${String.format("%.2f", newScale)}x"
                 }
 
                 override fun onStartTrackingTouch(seekBar: SeekBar?) {}
                 override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                    val progress = seekBar?.progress ?: 25
-                    val finalScale = 0.75f + (progress / 100f)
+                    val progress = seekBar?.progress ?: 75
+                    val finalScale = 0.25f + (progress / 100f)
                     prefs.edit().putFloat(OverlayService.KEY_SCALE, finalScale).apply()
-                    Toast.makeText(this@MainActivity, "Scale set to ${String.format("%.2f", finalScale)}x", Toast.LENGTH_SHORT).show()
                     restartOverlayServiceIfRunning()
                 }
             })
@@ -137,7 +137,6 @@ class MainActivity : Activity() {
         posGroup.setOnCheckedChangeListener { _, checkedId ->
             val selectedPos = if (checkedId == rbTopLeft.id) OverlayService.POS_TOP_LEFT else OverlayService.POS_TOP_RIGHT
             prefs.edit().putString(OverlayService.KEY_POSITION, selectedPos).apply()
-            Toast.makeText(this, "Position set to $selectedPos", Toast.LENGTH_SHORT).show()
             restartOverlayServiceIfRunning()
         }
         posCard.addView(posGroup)
@@ -145,6 +144,87 @@ class MainActivity : Activity() {
 
         val spacer3 = TextView(this).apply { text = "\n" }
         rootLayout.addView(spacer3)
+
+        // --- Quickhack Card 3: HUD Alignment Calibrator (Joystick) ---
+        val xOff = prefs.getInt(OverlayService.KEY_X_OFFSET, 40)
+        val yOff = prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)
+        val calibrationCard = createQuickhackCard("HUD ALIGNMENT CALIBRATOR", "CALIBRATING", "3")
+
+        val offsetLabel = TextView(this).apply {
+            text = "Offset: X=$xOff, Y=$yOff"
+            textSize = 12f
+            setTextColor(Color.parseColor("#00E5FF"))
+            typeface = Typeface.MONOSPACE
+            setPadding(24, 8, 24, 0)
+        }
+        calibrationCard.addView(offsetLabel)
+
+        val joystickPad = View(this).apply {
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#0A121E"))
+                setStroke(1, Color.parseColor("#00E5FF"))
+                cornerRadius = 4f
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                300
+            ).apply { setMargins(24, 16, 24, 16) }
+
+            var lastX = 0f
+            var lastY = 0f
+
+            setOnTouchListener { _, event ->
+                when (event.action) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        lastX = event.x
+                        lastY = event.y
+                    }
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        val dx = (event.x - lastX).toInt() / 2
+                        val dy = (event.y - lastY).toInt() / 2
+                        
+                        if (dx != 0 || dy != 0) {
+                            val newX = (prefs.getInt(OverlayService.KEY_X_OFFSET, 40) + dx).coerceIn(-500, 1500)
+                            val newY = (prefs.getInt(OverlayService.KEY_Y_OFFSET, 40) + dy).coerceIn(-500, 1500)
+                            
+                            prefs.edit().apply {
+                                putInt(OverlayService.KEY_X_OFFSET, newX)
+                                putInt(OverlayService.KEY_Y_OFFSET, newY)
+                            }.apply()
+                            
+                            offsetLabel.text = "Offset: X=$newX, Y=$newY"
+                            restartOverlayServiceIfRunning()
+                            
+                            lastX = event.x
+                            lastY = event.y
+                        }
+                    }
+                }
+                true
+            }
+        }
+        calibrationCard.addView(joystickPad)
+
+        val btnReset = Button(this).apply {
+            text = "[ RESET ALIGNMENT ]"
+            textSize = 10f
+            setBackgroundColor(Color.TRANSPARENT)
+            setTextColor(Color.parseColor("#FF0055"))
+            setOnClickListener {
+                prefs.edit().apply {
+                    putInt(OverlayService.KEY_X_OFFSET, 40)
+                    putInt(OverlayService.KEY_Y_OFFSET, 40)
+                }.apply()
+                offsetLabel.text = "Offset: X=40, Y=40"
+                restartOverlayServiceIfRunning()
+            }
+        }
+        calibrationCard.addView(btnReset)
+
+        rootLayout.addView(calibrationCard)
+
+        val spacer4_perm = TextView(this).apply { text = "\n" }
+        rootLayout.addView(spacer4_perm)
 
         // --- Permission Button ---
         val btnPermission = Button(this).apply {
@@ -161,8 +241,8 @@ class MainActivity : Activity() {
         }
         rootLayout.addView(btnPermission)
 
-        val spacer4 = TextView(this).apply { text = "\n" }
-        rootLayout.addView(spacer4)
+        val spacer4_exec = TextView(this).apply { text = "\n" }
+        rootLayout.addView(spacer4_exec)
 
         // --- Cyberware Action Buttons ---
         val btnStart = Button(this).apply {
@@ -198,7 +278,10 @@ class MainActivity : Activity() {
         }
         rootLayout.addView(btnStop)
 
-        setContentView(rootLayout)
+        val scrollView = android.widget.ScrollView(this).apply {
+            addView(rootLayout)
+        }
+        setContentView(scrollView)
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
             startOverlayService()

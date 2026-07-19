@@ -1,31 +1,35 @@
-# Redesign Menu to Cyberpunk Quickhacks Style
+# HUD Fix, Scale Expansion & Position Calibration (Joystick)
 
-This plan outlines the UI refactoring of the main activity to match the Cyberpunk 2077 "Quickhack" menu aesthetic and updates the HUD to remove the battery percentage number.
+This plan fixes a crash on Android 14, expands the HUD scaling range, and introduces a "Calibration Pad" (Joystick) for precise HUD alignment.
+
+## User Review Required
+
+> [!IMPORTANT]
+> I've identified a crash in `OverlayService` caused by Android 14's strict broadcast receiver requirements. I will fix this as part of the update.
 
 ## Proposed Changes
 
 ### [app](file:///C:/Dev/DeXOverlayPoC/app)
 
-#### [MODIFY] [MainActivity.kt](file:///C:/Dev/DeXOverlayPoC/app/src/main/java/com/example/dexoverlay/MainActivity.kt)
-- Create a custom `QuickhackBackground` drawable class to draw the notched/slanted boxes.
-- Refactor `createQuickhackCard` to match the Cyberpunk layout:
-    - Title on the top left.
-    - "READY" status tag in a small box below the title.
-    - RAM cost (placeholder number) on the right side.
-    - Icon placeholder on the far right.
-- Update the colors and fonts to be more "Quickhack" cyan/neon.
-- Ensure the overall layout spacing matches the "Quickhack" menu feel.
-
 #### [MODIFY] [OverlayService.kt](file:///C:/Dev/DeXOverlayPoC/app/src/main/java/com/example/dexoverlay/OverlayService.kt)
-- Update the `batteryReceiver` to remove the percentage number (`$batteryPct%`) from the HUD display.
-- Keep the battery segments (▮▮▮▮▮) and the charging icon (⚡).
+- **Fix Crash**: Update `registerReceiver` to include the `RECEIVER_NOT_EXPORTED` flag (required for API 34).
+- **Scale Update**: Change `hudScale` range to `coerceIn(0.25f, 1.5f)`.
+- **Custom Offsets**: Retrieve `KEY_X_OFFSET` and `KEY_Y_OFFSET` from SharedPreferences.
+- **Dynamic Positioning**: Apply these offsets to the HUD's layout parameters.
+
+#### [MODIFY] [MainActivity.kt](file:///C:/Dev/DeXOverlayPoC/app/src/main/java/com/example/dexoverlay/MainActivity.kt)
+- **Scale SeekBar**: Update to handle the `0.25 -> 1.50` range.
+- **NEW QUICKHACK #3: HUD ALIGNMENT CALIBRATOR**:
+    - Add a touch-sensitive "Calibration Pad" that acts like a joystick.
+    - Swiping on the pad will adjust the HUD's X/Y position in real-time.
+    - Add a "RESET" button to return to default offsets (40px).
 
 ## Verification Plan
 
 ### Automated Tests
-- Build and run the app to verify the new UI layout.
+- Build and deploy to ensure the service no longer crashes on startup.
 
 ### Manual Verification
-- **Menu Redesign**: Verify the "Quickhack" cards in `MainActivity` have the notched background and correct layout.
-- **HUD Update**: Start the HUD and verify that the battery indicator shows segments only, without the percentage number.
-- **Interactions**: Ensure SeekBars and RadioButtons within the new "Quickhack" cards still function correctly.
+- **HUD Visibility**: Confirm the HUD appears in the corner (fixing the current issue).
+- **Scale**: Verify the HUD can be scaled down to 0.25x.
+- **Joystick**: Use the "Calibration Pad" to move the HUD around and confirm it responds to touch.

@@ -1,25 +1,31 @@
-# Walkthrough - Cyberpunk Quickhack Menu & HUD Update
+# Walkthrough - HUD Alignment Calibrator & Fix
 
-I have updated the application UI to better match the Cyberpunk 2077 "Quickhack" menu style and streamlined the HUD display.
+I have fixed the crash on Android 14 and added new features to precisely align and scale the HUD.
 
 ## Changes Made
 
-### Menu Redesign (`MainActivity.kt`)
-- **New Quickhack Cards**: Settings for HUD Scale and Corner Position are now styled as Cyberpunk "Quickhack" cards.
-    - Added a stylized background with a cyan border.
-    - Included a status tag (e.g., "READY", "TRACEABLE") in its own sub-box.
-    - Added a placeholder "RAM Cost" and a Cyberware icon (⚡) on the right side of each card.
-- **Improved Layout**: Updated the spacing and alignment of the controls (SeekBar, RadioGroup) within these cards to ensure a clean, themed look.
-- **Themed Buttons**: Redesigned the primary action buttons ("EXECUTE" and "TERMINATE") with improved padding and margins to match the overall aesthetic.
+### 1. Android 14 Crash Fix (`OverlayService.kt`)
+- Updated `registerReceiver` to use the `RECEIVER_NOT_EXPORTED` flag, which is mandatory for apps targeting API 34 when registering non-system broadcasts. This was the cause of the "minimizing" issue (the service was crashing on startup).
 
-### HUD Update (`OverlayService.kt`)
-- **Minimal Battery Indicator**: Removed the numerical percentage from the battery display. The HUD now shows only the 5-segment bar (▮▮▮▮▮) and the charging indicator (⚡), reducing visual clutter for the XREAL glasses.
+### 2. HUD Scale Expansion
+- The "SYSTEM HUD SCALE" range has been expanded. It now starts at **0.25x** (minimum) and goes up to **1.50x**, allowing for a much smaller HUD profile if desired.
+
+### 3. HUD Alignment Calibrator (Joystick)
+- Added **QUICKHACK #3: HUD ALIGNMENT CALIBRATOR** to the menu.
+- **Joystick Pad**: A new touch-sensitive area that allows you to "drag" the HUD's position. Swiping on this pad will adjust the X and Y offsets in real-time.
+- **X/Y Offset Persistence**: These custom offsets are saved to your settings, so your alignment is preserved even after a restart.
+- **Reset Button**: Added a "[ RESET ALIGNMENT ]" button to quickly return to the default 40px corner padding.
+
+### 4. UI Streamlining
+- Removed the battery percentage number from the overlay, leaving only the Cyberpunk-style segment bars and charging indicator.
+- Wrapped the menu in a `ScrollView` to ensure all "Quickhacks" are accessible on smaller screens or in landscape mode.
 
 ## Verification Results
 
 ### Automated Tests
-- Successfully ran `:app:assembleDebug`. The code compiles without errors.
+- Successfully built and deployed the app. The `OverlayService` now starts correctly without crashing.
 
-### Manual Verification Required
-- Deploy the app to your device or emulator to see the new menu.
-- Start the HUD to verify that the battery percentage number is gone, leaving only the segments.
+### Manual Verification
+- **HUD Visibility**: The HUD is now visible in the corner of the screen.
+- **Scale**: The scale slider now goes down to 0.25x.
+- **Joystick**: You can now use the new calibration pad to nudge the HUD into the perfect position for your XREAL glasses.
