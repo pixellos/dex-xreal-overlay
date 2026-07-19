@@ -41,6 +41,7 @@ class OverlayService : Service() {
     private var cursorY = 540f
 
     private var usbImuDriver: XrealUsbImuDriver? = null
+    private var phoneImuDriver: PhoneImuDriver? = null
     private var udpImuReceiver: UdpImuReceiver? = null
     private var isNavActive = false
     private var isHudVisible = true
@@ -235,7 +236,7 @@ class OverlayService : Service() {
     // Glowing Cyberpunk Head-Tracked Cursor Reticle
     private fun setupHeadTrackedCursor() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, false)
+        val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, true)
         if (!enableHeadCursor) return
 
         cursorView = TextView(this).apply {
@@ -275,7 +276,7 @@ class OverlayService : Service() {
 
     private fun initImuDrivers() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, false)
+        val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, true)
         val singleTapAction = prefs.getString(KEY_SINGLE_TAP_ACTION, SINGLE_TAP_ACTION_CLICK) ?: SINGLE_TAP_ACTION_CLICK
         if (!enableHeadCursor) return
 
@@ -311,7 +312,6 @@ class OverlayService : Service() {
                         cursorY = 540f
                     }
                     else -> {
-                        // Dispatch System Click via Accessibility Service
                         val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
                             putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
                             putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
@@ -322,7 +322,7 @@ class OverlayService : Service() {
             }
         }
 
-        // 1. Direct USB Host Driver
+        // 1. Direct XREAL 1s USB Host Driver with Magic Wakeup Packet
         usbImuDriver = XrealUsbImuDriver(this).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             onGlassesSingleTapListener = { onSingleTap() }
@@ -332,7 +332,13 @@ class OverlayService : Service() {
             usbImuDriver?.startReading(device)
         }
 
-        // 2. Ethernet / UDP Network Listener (Port 9090)
+        // 2. Android Phone Gyroscope Fallback Motion Sensor
+        phoneImuDriver = PhoneImuDriver(this).apply {
+            onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
+            startListening()
+        }
+
+        // 3. Ethernet / UDP Network Receiver (Port 9090)
         udpImuReceiver = UdpImuReceiver(9090).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             onGlassesSingleTapListener = { onSingleTap() }
@@ -360,7 +366,7 @@ class OverlayService : Service() {
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Cyberpunk HUD & Head Cursor Active")
-            .setContentText("USB & Ethernet/UDP Port 9090 Active")
+            .setContentText("Tri-Engine Motion Tracking Active")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
 
@@ -371,6 +377,7 @@ class OverlayService : Service() {
         super.onDestroy()
         handler.removeCallbacks(clockRunnable)
         usbImuDriver?.stopReading()
+        phoneImuDriver?.stopListening()
         udpImuReceiver?.stopListening()
         try {
             unregisterReceiver(batteryReceiver)

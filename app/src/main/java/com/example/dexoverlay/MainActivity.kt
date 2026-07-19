@@ -63,7 +63,7 @@ class MainActivity : Activity() {
         headerCard.addView(headerText)
 
         val statusTag = TextView(this).apply {
-            text = "[ ETHERNET / UDP ACTIVE ]"
+            text = "[ TRI-ENGINE ACTIVE ]"
             textSize = 10f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -74,11 +74,10 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
-        // --- Card 1: Connection Mode (Ethernet UDP vs Direct USB) ---
+        // --- Card 1: Head Tracking Control & System Click Permission ---
         val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, true)
-        val connectionMode = prefs.getString("connection_mode", "ETHERNET") ?: "ETHERNET"
 
-        val connCard = createCompactCard("🌐 CONNECTION MODE & HEAD CURSOR", "#00E5FF")
+        val connCard = createCompactCard("👓 HEAD TRACKING & SYSTEM CLICK DRIVER", "#00E5FF")
 
         val cbHeadCursor = CheckBox(this).apply {
             text = " Enable Head Tracking Cursor"
@@ -96,39 +95,30 @@ class MainActivity : Activity() {
         }
         connCard.addView(cbHeadCursor)
 
-        val modeGroup = RadioGroup(this).apply {
-            orientation = RadioGroup.VERTICAL
-            setPadding(0, 4, 0, 4)
-        }
-
-        val rbEthernet = RadioButton(this).apply {
-            id = View.generateViewId()
-            text = "🌐 Ethernet / UDP Socket Mode (Port 9090 - No Permission Needed)"
-            setTextColor(Color.parseColor("#00FF66"))
-            textSize = 11f
-            typeface = Typeface.MONOSPACE
-            isChecked = (connectionMode == "ETHERNET")
-        }
-
-        val rbUsb = RadioButton(this).apply {
-            id = View.generateViewId()
-            text = "🔌 Direct USB-C Cable Mode (Requires USB Permission)"
-            setTextColor(Color.WHITE)
-            textSize = 11f
-            typeface = Typeface.MONOSPACE
-            isChecked = (connectionMode == "USB")
-        }
-
-        modeGroup.addView(rbEthernet)
-        modeGroup.addView(rbUsb)
-
-        val btnConnectUsb = Button(this).apply {
-            text = "⚡ GRANT DIRECT USB PERMISSION"
+        val btnAccessibility = Button(this).apply {
+            text = "👆 ENABLE SYSTEM MOUSE CLICK ACCESSIBILITY"
             setBackgroundColor(Color.parseColor("#0C182B"))
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
             textSize = 10f
-            visibility = if (connectionMode == "USB") View.VISIBLE else View.GONE
+            setOnClickListener {
+                try {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    startActivity(intent)
+                    Toast.makeText(this@MainActivity, "Enable 'DeX Head Cursor Accessibility Driver'", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "Could not open Accessibility Settings", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        connCard.addView(btnAccessibility)
+
+        val btnConnectUsb = Button(this).apply {
+            text = "⚡ WAKE UP XREAL 1s USB SENSORS"
+            setBackgroundColor(Color.parseColor("#09111E"))
+            setTextColor(Color.parseColor("#FFE600"))
+            typeface = Typeface.MONOSPACE
+            textSize = 10f
             setOnClickListener {
                 try {
                     requestXrealUsbPermission()
@@ -137,19 +127,6 @@ class MainActivity : Activity() {
                 }
             }
         }
-
-        modeGroup.setOnCheckedChangeListener { group, checkedId ->
-            val checkedRb = group.findViewById<RadioButton>(checkedId)
-            if (checkedRb != null && checkedRb.isPressed) {
-                val selectedMode = if (checkedId == rbUsb.id) "USB" else "ETHERNET"
-                prefs.edit().putString("connection_mode", selectedMode).apply()
-                btnConnectUsb.visibility = if (selectedMode == "USB") View.VISIBLE else View.GONE
-                Toast.makeText(this, "Connection Mode: $selectedMode", Toast.LENGTH_SHORT).show()
-                restartOverlayServiceIfRunning()
-            }
-        }
-
-        connCard.addView(modeGroup)
         connCard.addView(btnConnectUsb)
         rootLayout.addView(connCard)
 
@@ -406,7 +383,7 @@ class MainActivity : Activity() {
         rootLayout.addView(btnStart)
 
         val btnStop = Button(this).apply {
-            text = "⏹️ [ STOP CYBERPUNK HUD ]"
+            text = "⏹️ [ TERMINATE OVERLAY ]"
             setBackgroundColor(Color.parseColor("#FF0055"))
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
@@ -454,7 +431,7 @@ class MainActivity : Activity() {
             usbDriver.requestUsbPermission(device)
             Toast.makeText(this, "XREAL Device Found! Requesting Permission...", Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(this, "No USB Device on port. Check glasses USB connection!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "No USB Device on port. Plug in XREAL glasses!", Toast.LENGTH_SHORT).show()
         }
     }
 
