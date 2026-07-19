@@ -145,7 +145,7 @@ class MainActivity : Activity() {
         val spacer3 = TextView(this).apply { text = "\n" }
         rootLayout.addView(spacer3)
 
-        // --- Quickhack Card 3: HUD Alignment Calibrator (Joystick) ---
+        // --- Quickhack Card 3: HUD Alignment Calibrator (Smooth Touch Pad + D-Pad Steps) ---
         val xOff = prefs.getInt(OverlayService.KEY_X_OFFSET, 40)
         val yOff = prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)
         val calibrationCard = createQuickhackCard("HUD ALIGNMENT CALIBRATOR", "CALIBRATING", "3")
@@ -155,10 +155,79 @@ class MainActivity : Activity() {
             textSize = 12f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
-            setPadding(24, 8, 24, 0)
+            setPadding(24, 8, 24, 8)
         }
         calibrationCard.addView(offsetLabel)
 
+        // D-Pad Direction Button Panel
+        val dpadLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, 8, 0, 8)
+        }
+
+        fun updateOffset(dx: Int, dy: Int) {
+            val curX = prefs.getInt(OverlayService.KEY_X_OFFSET, 40)
+            val curY = prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)
+            val newX = (curX + dx).coerceIn(-500, 1500)
+            val newY = (curY + dy).coerceIn(-500, 1500)
+            prefs.edit().apply {
+                putInt(OverlayService.KEY_X_OFFSET, newX)
+                putInt(OverlayService.KEY_Y_OFFSET, newY)
+            }.apply()
+            offsetLabel.text = "Offset: X=$newX, Y=$newY"
+            sendBroadcast(Intent(OverlayService.ACTION_UPDATE_POSITION))
+        }
+
+        val btnUp = Button(this).apply {
+            text = "▲ UP"
+            setBackgroundColor(Color.parseColor("#121824"))
+            setTextColor(Color.parseColor("#FFE600"))
+            typeface = Typeface.MONOSPACE
+            textSize = 11f
+            setOnClickListener { updateOffset(0, -10) }
+        }
+        dpadLayout.addView(btnUp)
+
+        val lrRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+
+        val btnLeft = Button(this).apply {
+            text = "◄ LEFT"
+            setBackgroundColor(Color.parseColor("#121824"))
+            setTextColor(Color.parseColor("#FFE600"))
+            typeface = Typeface.MONOSPACE
+            textSize = 11f
+            setOnClickListener { updateOffset(-10, 0) }
+        }
+
+        val btnRight = Button(this).apply {
+            text = "RIGHT ►"
+            setBackgroundColor(Color.parseColor("#121824"))
+            setTextColor(Color.parseColor("#FFE600"))
+            typeface = Typeface.MONOSPACE
+            textSize = 11f
+            setOnClickListener { updateOffset(10, 0) }
+        }
+
+        lrRow.addView(btnLeft)
+        lrRow.addView(btnRight)
+        dpadLayout.addView(lrRow)
+
+        val btnDown = Button(this).apply {
+            text = "▼ DOWN"
+            setBackgroundColor(Color.parseColor("#121824"))
+            setTextColor(Color.parseColor("#FFE600"))
+            typeface = Typeface.MONOSPACE
+            textSize = 11f
+            setOnClickListener { updateOffset(0, 10) }
+        }
+        dpadLayout.addView(btnDown)
+        calibrationCard.addView(dpadLayout)
+
+        // Smooth Touch Trackpad
         val joystickPad = View(this).apply {
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#0A121E"))
@@ -167,37 +236,43 @@ class MainActivity : Activity() {
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                300
-            ).apply { setMargins(24, 16, 24, 16) }
+                160
+            ).apply { setMargins(24, 8, 24, 8) }
 
             var lastX = 0f
             var lastY = 0f
 
-            setOnTouchListener { _, event ->
+            setOnTouchListener { v, event ->
                 when (event.action) {
                     android.view.MotionEvent.ACTION_DOWN -> {
+                        v.parent.requestDisallowInterceptTouchEvent(true)
                         lastX = event.x
                         lastY = event.y
                     }
                     android.view.MotionEvent.ACTION_MOVE -> {
-                        val dx = (event.x - lastX).toInt() / 2
-                        val dy = (event.y - lastY).toInt() / 2
-                        
+                        val dx = (event.x - lastX).toInt()
+                        val dy = (event.y - lastY).toInt()
+
                         if (dx != 0 || dy != 0) {
-                            val newX = (prefs.getInt(OverlayService.KEY_X_OFFSET, 40) + dx).coerceIn(-500, 1500)
-                            val newY = (prefs.getInt(OverlayService.KEY_Y_OFFSET, 40) + dy).coerceIn(-500, 1500)
-                            
+                            val curX = prefs.getInt(OverlayService.KEY_X_OFFSET, 40)
+                            val curY = prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)
+                            val newX = (curX + dx).coerceIn(-500, 1500)
+                            val newY = (curY + dy).coerceIn(-500, 1500)
+
                             prefs.edit().apply {
                                 putInt(OverlayService.KEY_X_OFFSET, newX)
                                 putInt(OverlayService.KEY_Y_OFFSET, newY)
                             }.apply()
-                            
+
                             offsetLabel.text = "Offset: X=$newX, Y=$newY"
-                            restartOverlayServiceIfRunning()
-                            
+                            sendBroadcast(Intent(OverlayService.ACTION_UPDATE_POSITION))
+
                             lastX = event.x
                             lastY = event.y
                         }
+                    }
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                        v.parent.requestDisallowInterceptTouchEvent(false)
                     }
                 }
                 true
@@ -206,7 +281,7 @@ class MainActivity : Activity() {
         calibrationCard.addView(joystickPad)
 
         val btnReset = Button(this).apply {
-            text = "[ RESET ALIGNMENT ]"
+            text = "[ RESET ALIGNMENT (40, 40) ]"
             textSize = 10f
             setBackgroundColor(Color.TRANSPARENT)
             setTextColor(Color.parseColor("#FF0055"))
@@ -216,7 +291,7 @@ class MainActivity : Activity() {
                     putInt(OverlayService.KEY_Y_OFFSET, 40)
                 }.apply()
                 offsetLabel.text = "Offset: X=40, Y=40"
-                restartOverlayServiceIfRunning()
+                sendBroadcast(Intent(OverlayService.ACTION_UPDATE_POSITION))
             }
         }
         calibrationCard.addView(btnReset)
@@ -306,7 +381,6 @@ class MainActivity : Activity() {
             setPadding(0, 0, 0, 0)
         }
 
-        // Left Content Box (Notched Look simulated with border)
         val contentBox = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -351,7 +425,6 @@ class MainActivity : Activity() {
         textStack.addView(tagBox)
         contentBox.addView(textStack)
 
-        // RAM Cost
         val ramView = TextView(this).apply {
             text = ramCost
             textSize = 18f
@@ -361,7 +434,6 @@ class MainActivity : Activity() {
         }
         contentBox.addView(ramView)
 
-        // Far Right Icon Box
         val iconView = TextView(this).apply {
             text = "⚡"
             textSize = 16f
