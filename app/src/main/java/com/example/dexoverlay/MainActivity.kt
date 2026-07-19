@@ -1,13 +1,11 @@
 package com.example.dexoverlay
 
 import android.app.Activity
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -104,8 +102,12 @@ class MainActivity : Activity() {
             typeface = Typeface.MONOSPACE
             textSize = 11f
             setOnClickListener {
-                usbStatusText.text = usbDriver.getAllConnectedUsbDevicesSummary()
-                requestXrealUsbPermission()
+                try {
+                    usbStatusText.text = usbDriver.getAllConnectedUsbDevicesSummary()
+                    requestXrealUsbPermission()
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "USB Permission error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
         }
         imuCard.addView(btnConnectUsb)
@@ -496,7 +498,7 @@ class MainActivity : Activity() {
             usbDriver.requestUsbPermission(device)
             Toast.makeText(this, "XREAL Device Found! Prompting USB Permission...", Toast.LENGTH_LONG).show()
         } else {
-            Toast.makeText(this, "No USB HID Endpoint found. Check USB-C connection!", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "No USB device found on port. Plug in XREAL glasses!", Toast.LENGTH_LONG).show()
         }
     }
 

@@ -23,6 +23,7 @@ class XrealUsbImuDriver(private val context: Context) {
     private var usbInterface: UsbInterface? = null
     private var isReading = false
     private var readThread: Thread? = null
+    private var isReceiverRegistered = false
 
     var onHeadMoveListener: ((deltaX: Float, deltaY: Float) -> Unit)? = null
     var onGlassesSingleTapListener: (() -> Unit)? = null
@@ -31,82 +32,111 @@ class XrealUsbImuDriver(private val context: Context) {
         override fun onReceive(cntx: Context?, intent: Intent?) {
             if (ACTION_USB_PERMISSION == intent?.action) {
                 synchronized(this) {
-                    val device: UsbDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
-                    }
+                    try {
+                        val device: UsbDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                        }
 
-                    if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-                        device?.let { startReading(it) }
-                    } else {
-                        Log.e("XrealUsbDriver", "USB Permission DENIED by user!")
+                        if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                            device?.let { startReading(it) }
+                        } else {
+                            Log.e("XrealUsbDriver", "USB Permission DENIED by user!")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("XrealUsbDriver", "Error handling USB permission broadcast", e)
                     }
                 }
             }
         }
     }
 
-    init {
-        val filter = IntentFilter(ACTION_USB_PERMISSION)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(usbReceiver, filter)
+    fun registerPermissionReceiver() {
+        if (!isReceiverRegistered) {
+            try {
+                val filter = IntentFilter(ACTION_USB_PERMISSION)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    context.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                } else {
+                    context.registerReceiver(usbReceiver, filter)
+                }
+                isReceiverRegistered = true
+            } catch (e: Exception) {
+                Log.e("XrealUsbDriver", "Error registering receiver", e)
+            }
         }
     }
 
     fun findXrealDevice(): UsbDevice? {
-        val deviceList = usbManager.deviceList.values
-        Log.d("XrealUsbDriver", "Scanning USB Devices. Count=${deviceList.size}")
+        try {
+            val deviceList = usbManager.deviceList.values
+            var match = deviceList.find { device ->
+                device.vendorId in XREAL_VIDS || device.productId in XREAL_PIDS
+            }
 
-        // 1. Primary Check: Match XREAL / Nreal VIDs (0x3318, 0x28E5, 0x0483)
-        var match = deviceList.find { device ->
-            device.vendorId in XREAL_VIDS || device.productId in XREAL_PIDS
-        }
-
-        // 2. Secondary Fallback: Match ANY connected USB device that has Interrupt IN endpoints
-        if (match == null) {
-            match = deviceList.find { device ->
-                var hasInterruptIn = false
-                for (i in 0 until device.interfaceCount) {
-                    val intf = device.getInterface(i)
-                    for (e in 0 until intf.endpointCount) {
-                        if (intf.getEndpoint(e).direction == UsbConstants.USB_DIR_IN) {
-                            hasInterruptIn = true
-                            break
+            if (match == null) {
+                match = deviceList.find { device ->
+                    var hasInterruptIn = false
+                    for (i in 0 until device.interfaceCount) {
+                        val intf = device.getInterface(i)
+                        for (e in 0 until intf.endpointCount) {
+                            if (intf.getEndpoint(e).direction == UsbConstants.USB_DIR_IN) {
+                                hasInterruptIn = true
+                                break
+                            }
                         }
                     }
+                    hasInterruptIn
                 }
-                hasInterruptIn
             }
+            return match
+        } catch (e: Exception) {
+            Log.e("XrealUsbDriver", "Error scanning USB devices", e)
+            return null
         }
-
-        return match
     }
 
     fun getAllConnectedUsbDevicesSummary(): String {
-        val deviceList = usbManager.deviceList.values
-        if (deviceList.isEmpty()) return "No USB devices detected on USB-C port"
+        try {
+            val deviceList = usbManager.deviceList.values
+            if (deviceList.isEmpty()) return "No USB devices detected on USB-C port"
 
-        val sb = StringBuilder()
-        for (dev in deviceList) {
-            sb.append("VID:0x${Integer.toHexString(dev.vendorId).uppercase()} PID:0x${Integer.toHexString(dev.productId).uppercase()} - ${dev.deviceName}\n")
+            val sb = StringBuilder()
+            for (dev in deviceList) {
+                sb.append("VID:0x${Integer.toHexString(dev.vendorId).uppercase()} PID:0x${Integer.toHexString(dev.productId).uppercase()} - ${dev.deviceName}\n")
+            }
+            return sb.toString()
+        } catch (e: Exception) {
+            return "Error scanning USB devices: ${e.message}"
         }
-        return sb.toString()
     }
 
     fun hasUsbPermission(device: UsbDevice): Boolean {
-        return usbManager.hasPermission(device)
+        return try {
+            usbManager.hasPermission(device)
+        } catch (e: Exception) {
+            false
+        }
     }
 
     fun requestUsbPermission(device: UsbDevice) {
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            PendingIntent.FLAG_MUTABLE
-        } else 0
-        val pendingIntent = PendingIntent.getBroadcast(context, 0, Intent(ACTION_USB_PERMISSION), flags)
-        usbManager.requestPermission(device, pendingIntent)
+        try {
+            registerPermissionReceiver()
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val intent = Intent(ACTION_USB_PERMISSION).apply {
+                setPackage(context.packageName)
+            }
+            val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, flags)
+            usbManager.requestPermission(device, pendingIntent)
+        } catch (e: Exception) {
+            Log.e("XrealUsbDriver", "Error requesting USB permission", e)
+        }
     }
 
     fun startReading(device: UsbDevice): Boolean {
@@ -192,9 +222,12 @@ class XrealUsbImuDriver(private val context: Context) {
 
     fun stopReading() {
         isReading = false
-        try {
-            context.unregisterReceiver(usbReceiver)
-        } catch (e: Exception) {}
+        if (isReceiverRegistered) {
+            try {
+                context.unregisterReceiver(usbReceiver)
+                isReceiverRegistered = false
+            } catch (e: Exception) {}
+        }
         try {
             readThread?.interrupt()
             readThread = null
