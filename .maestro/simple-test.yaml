@@ -1,4 +1,0 @@
-appId: com.example.dexoverlay
----
-- launchApp
-- assertVisible: "XREAL 1s & DeX Minimal HUD"

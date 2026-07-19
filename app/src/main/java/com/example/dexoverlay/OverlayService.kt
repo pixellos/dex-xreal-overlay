@@ -176,18 +176,12 @@ class OverlayService : Service() {
         }
         windowLayoutParams = params
 
-        // Authentic Cyberpunk HUD Container with Notched Background
+        // Minimal HUD Container (100% Transparent Background)
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = if (position == POS_TOP_LEFT) Gravity.START else Gravity.END
-            setPadding((16 * hudScale).toInt(), (12 * hudScale).toInt(), (16 * hudScale).toInt(), (12 * hudScale).toInt())
-            
-            background = CyberpunkNotchedDrawable(
-                backgroundColor = Color.parseColor("#99080A0F"), // Semi-transparent dark blue
-                borderColor = Color.parseColor("#00E5FF"), // Neon Cyan
-                glowColor = Color.parseColor("#00E5FF"),
-                notchSize = 12f * hudScale
-            )
+            setPadding((12 * hudScale).toInt(), (8 * hudScale).toInt(), (12 * hudScale).toInt(), (8 * hudScale).toInt())
+            setBackgroundColor(Color.TRANSPARENT)
         }
 
         // Row 1: Cyberpunk Time & Battery
@@ -221,18 +215,6 @@ class OverlayService : Service() {
         headerRow.addView(batteryTextView)
 
         container.addView(headerRow)
-
-        // --- Row 2: Pure Transparent Cyberpunk Traced Directions (Neon Pink #FF0055 Accent) ---
-        navTraceTextView = TextView(this).apply {
-            textSize = 14f * hudScale
-            setTextColor(Color.parseColor("#FF0055")) // Neon Pink Vector Trace
-            typeface = Typeface.MONOSPACE
-            setTypeface(typeface, Typeface.BOLD)
-            setShadowLayer(6f * hudScale, 0f, 0f, Color.parseColor("#CCFF0055"))
-            visibility = View.GONE
-            setPadding(0, (6 * hudScale).toInt(), 0, 0)
-        }
-        container.addView(navTraceTextView)
 
         overlayView = container
         windowManager.addView(overlayView, windowLayoutParams)
@@ -282,60 +264,6 @@ class OverlayService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    // --- Custom Authentic Cyberpunk Notched Graphics Engine ---
-    private class CyberpunkNotchedDrawable(
-        val backgroundColor: Int,
-        val borderColor: Int,
-        val glowColor: Int = 0,
-        val notchSize: Float = 16f
-    ) : android.graphics.drawable.Drawable() {
-
-        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-        private val strokePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-        private val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-        private val path = android.graphics.Path()
-
-        override fun draw(canvas: android.graphics.Canvas) {
-            val b = bounds
-            val w = b.width().toFloat()
-            val h = b.height().toFloat()
-
-            path.reset()
-            // HUD Geometry: Chamfered Corners
-            path.moveTo(0f, 0f)
-            path.lineTo(w - notchSize, 0f)
-            path.lineTo(w, notchSize)
-            path.lineTo(w, h)
-            path.lineTo(notchSize, h)
-            path.lineTo(0f, h - notchSize)
-            path.close()
-
-            // 1. Draw Background
-            paint.color = backgroundColor
-            paint.style = android.graphics.Paint.Style.FILL
-            canvas.drawPath(path, paint)
-
-            // 2. Draw Glow
-            if (glowColor != 0) {
-                glowPaint.color = glowColor
-                glowPaint.style = android.graphics.Paint.Style.STROKE
-                glowPaint.strokeWidth = 3f
-                glowPaint.maskFilter = android.graphics.BlurMaskFilter(6f, android.graphics.BlurMaskFilter.Blur.OUTER)
-                canvas.drawPath(path, glowPaint)
-            }
-
-            // 3. Draw Main Border
-            strokePaint.color = borderColor
-            strokePaint.style = android.graphics.Paint.Style.STROKE
-            strokePaint.strokeWidth = 2f
-            canvas.drawPath(path, strokePaint)
-        }
-
-        override fun setAlpha(alpha: Int) { paint.alpha = alpha }
-        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) { paint.colorFilter = colorFilter }
-        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
-    }
 
     companion object {
         const val PREFS_NAME = "dex_hud_prefs"
