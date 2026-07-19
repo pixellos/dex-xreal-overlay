@@ -63,7 +63,7 @@ class MainActivity : Activity() {
         headerCard.addView(headerText)
 
         val statusTag = TextView(this).apply {
-            text = "[ READY ]"
+            text = "[ ETHERNET / UDP ACTIVE ]"
             textSize = 10f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -74,14 +74,14 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
-        // --- Card 1: XREAL Glasses & Head Cursor Control ---
-        val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, false)
-        val singleTapAction = prefs.getString(OverlayService.KEY_SINGLE_TAP_ACTION, OverlayService.SINGLE_TAP_ACTION_CLICK) ?: OverlayService.SINGLE_TAP_ACTION_CLICK
+        // --- Card 1: Connection Mode (Ethernet UDP vs Direct USB) ---
+        val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, true)
+        val connectionMode = prefs.getString("connection_mode", "ETHERNET") ?: "ETHERNET"
 
-        val imuCard = createCompactCard("👓 XREAL IMU & QUICK ACTION", "#00E5FF")
+        val connCard = createCompactCard("🌐 CONNECTION MODE & HEAD CURSOR", "#00E5FF")
 
         val cbHeadCursor = CheckBox(this).apply {
-            text = " Enable XREAL 1s Head Cursor"
+            text = " Enable Head Tracking Cursor"
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             textSize = 12f
@@ -94,14 +94,41 @@ class MainActivity : Activity() {
                 }
             }
         }
-        imuCard.addView(cbHeadCursor)
+        connCard.addView(cbHeadCursor)
+
+        val modeGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+            setPadding(0, 4, 0, 4)
+        }
+
+        val rbEthernet = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = "🌐 Ethernet / UDP Socket Mode (Port 9090 - No Permission Needed)"
+            setTextColor(Color.parseColor("#00FF66"))
+            textSize = 11f
+            typeface = Typeface.MONOSPACE
+            isChecked = (connectionMode == "ETHERNET")
+        }
+
+        val rbUsb = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = "🔌 Direct USB-C Cable Mode (Requires USB Permission)"
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            typeface = Typeface.MONOSPACE
+            isChecked = (connectionMode == "USB")
+        }
+
+        modeGroup.addView(rbEthernet)
+        modeGroup.addView(rbUsb)
 
         val btnConnectUsb = Button(this).apply {
-            text = "⚡ GRANT USB GLASSES PERMISSION"
+            text = "⚡ GRANT DIRECT USB PERMISSION"
             setBackgroundColor(Color.parseColor("#0C182B"))
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
             textSize = 10f
+            visibility = if (connectionMode == "USB") View.VISIBLE else View.GONE
             setOnClickListener {
                 try {
                     requestXrealUsbPermission()
@@ -110,16 +137,28 @@ class MainActivity : Activity() {
                 }
             }
         }
-        imuCard.addView(btnConnectUsb)
 
-        val tapLabel = TextView(this).apply {
-            text = "Single Tap Glasses Button Action:"
-            textSize = 10f
-            setTextColor(Color.parseColor("#FFE600"))
-            typeface = Typeface.MONOSPACE
-            setPadding(0, 6, 0, 2)
+        modeGroup.setOnCheckedChangeListener { group, checkedId ->
+            val checkedRb = group.findViewById<RadioButton>(checkedId)
+            if (checkedRb != null && checkedRb.isPressed) {
+                val selectedMode = if (checkedId == rbUsb.id) "USB" else "ETHERNET"
+                prefs.edit().putString("connection_mode", selectedMode).apply()
+                btnConnectUsb.visibility = if (selectedMode == "USB") View.VISIBLE else View.GONE
+                Toast.makeText(this, "Connection Mode: $selectedMode", Toast.LENGTH_SHORT).show()
+                restartOverlayServiceIfRunning()
+            }
         }
-        imuCard.addView(tapLabel)
+
+        connCard.addView(modeGroup)
+        connCard.addView(btnConnectUsb)
+        rootLayout.addView(connCard)
+
+        val spacer_mode = TextView(this).apply { text = " " }
+        rootLayout.addView(spacer_mode)
+
+        // --- Card 2: Quick Action Selection ---
+        val singleTapAction = prefs.getString(OverlayService.KEY_SINGLE_TAP_ACTION, OverlayService.SINGLE_TAP_ACTION_CLICK) ?: OverlayService.SINGLE_TAP_ACTION_CLICK
+        val actionCard = createCompactCard("🔘 QUICK ACTION SELECTION", "#00E5FF")
 
         val tapGroup = RadioGroup(this).apply {
             orientation = RadioGroup.VERTICAL
@@ -127,7 +166,7 @@ class MainActivity : Activity() {
 
         val rbClick = RadioButton(this).apply {
             id = View.generateViewId()
-            text = "Execute Click at Head Cursor"
+            text = "Execute Click at Head Cursor Position"
             setTextColor(Color.WHITE)
             textSize = 11f
             typeface = Typeface.MONOSPACE
@@ -167,13 +206,13 @@ class MainActivity : Activity() {
                 restartOverlayServiceIfRunning()
             }
         }
-        imuCard.addView(tapGroup)
-        rootLayout.addView(imuCard)
+        actionCard.addView(tapGroup)
+        rootLayout.addView(actionCard)
 
         val spacer2 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer2)
 
-        // --- Card 2: HUD Customization (Scale & Position) ---
+        // --- Card 3: HUD Customization (Scale & Position) ---
         val currentScale = prefs.getFloat(OverlayService.KEY_SCALE, 1.0f)
         val currentPos = prefs.getString(OverlayService.KEY_POSITION, OverlayService.POS_TOP_RIGHT)
 
@@ -246,7 +285,7 @@ class MainActivity : Activity() {
         val spacer3 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer3)
 
-        // --- Card 3: Alignment Calibrator ---
+        // --- Card 4: Alignment Calibrator ---
         val xOff = prefs.getInt(OverlayService.KEY_X_OFFSET, 40)
         val yOff = prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)
 
