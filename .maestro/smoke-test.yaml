@@ -1,0 +1,18 @@
+appId: com.example.dexoverlay
+---
+- launchApp
+- assertVisible: "XREAL 1s & DeX Minimal HUD"
+
+# Start the HUD
+- tapOn: "⚡ [ EXECUTE: START CYBERPUNK HUD ]"
+- assertVisible: "Cyberpunk HUD Active!"
+
+# Go Home and verify overlay (Maestro can't always 'see' system overlays, 
+# but it can verify we left the app)
+- home
+- delay: 2000
+
+# Return to App
+- launchApp
+- tapOn: "⏹️ [ TERMINATE: STOP HUD ]"
+- assertNotVisible: "Cyberpunk HUD Active!"
