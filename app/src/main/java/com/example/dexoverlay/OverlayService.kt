@@ -31,8 +31,17 @@ class OverlayService : Service() {
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
     private var clockTextView: TextView? = null
-    private var batteryView: CyberpunkBatteryView? = null
+    private var batteryTextView: TextView? = null
+    private var navTraceTextView: TextView? = null
     private var windowLayoutParams: WindowManager.LayoutParams? = null
+
+    private var cursorView: TextView? = null
+    private var cursorParams: WindowManager.LayoutParams? = null
+    private var cursorX = 960f
+    private var cursorY = 540f
+
+    private var usbImuDriver: XrealUsbImuDriver? = null
+    private var isNavActive = false
 
     private val handler = Handler(Looper.getMainLooper())
     private val clockRunnable = object : Runnable {
@@ -54,13 +63,28 @@ class OverlayService : Service() {
 
                 if (level >= 0 && scale > 0) {
                     val batteryPct = (level * 100 / scale.toFloat()).toInt()
-                    batteryView?.updateBattery(batteryPct, isCharging)
+                    val segments = (batteryPct / 20).coerceIn(0, 5)
+
+                    val bars = StringBuilder()
+                    for (i in 1..5) {
+                        if (i <= segments) bars.append("▮") else bars.append("▯")
+                    }
+
+                    val prefix = if (isCharging) "⚡" else ""
+                    batteryTextView?.text = "$prefix $bars"
+                    batteryTextView?.setTextColor(
+                        when {
+                            isCharging -> Color.parseColor("#00FF66")
+                            batteryPct <= 20 -> Color.parseColor("#FF0055")
+                            else -> Color.parseColor("#00E5FF")
+                        }
+                    )
                 }
             }
         }
     }
 
-    // Real-Time Smooth Window Position Update Receiver (Zero Service Restarts!)
+    // Position Update Receiver
     private val positionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_UPDATE_POSITION) {
@@ -80,10 +104,23 @@ class OverlayService : Service() {
         }
     }
 
-    // Navigation Listener Receiver (Disabled for minimal HUD)
+    // Navigation Listener Receiver
     private val navReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            // No action needed for minimal HUD
+            if (intent?.action == MapsNavListenerService.ACTION_NAV_UPDATE) {
+                val active = intent.getBooleanExtra(MapsNavListenerService.EXTRA_IS_NAV_ACTIVE, false)
+                val arrow = intent.getStringExtra(MapsNavListenerService.EXTRA_NAV_ARROW) ?: "🠹"
+                val title = intent.getStringExtra(MapsNavListenerService.EXTRA_NAV_TITLE) ?: ""
+                val text = intent.getStringExtra(MapsNavListenerService.EXTRA_NAV_TEXT) ?: ""
+
+                isNavActive = active
+                if (active && (title.isNotEmpty() || text.isNotEmpty())) {
+                    navTraceTextView?.text = "$arrow $title • $text"
+                    navTraceTextView?.visibility = View.VISIBLE
+                } else {
+                    navTraceTextView?.visibility = View.GONE
+                }
+            }
         }
     }
 
@@ -91,12 +128,6 @@ class OverlayService : Service() {
         super.onCreate()
         startForegroundServiceNotification()
         
-        val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_BATTERY_CHANGED)
-            addAction(MapsNavListenerService.ACTION_NAV_UPDATE)
-            addAction(ACTION_UPDATE_POSITION)
-        }
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), RECEIVER_NOT_EXPORTED)
             registerReceiver(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE), RECEIVER_NOT_EXPORTED)
@@ -108,6 +139,8 @@ class OverlayService : Service() {
         }
 
         setupOverlayWindow()
+        setupHeadTrackedCursor()
+        initXrealUsbDriver()
     }
 
     private fun setupOverlayWindow() {
@@ -145,22 +178,19 @@ class OverlayService : Service() {
         }
         windowLayoutParams = params
 
-        // Minimal HUD Container (100% Transparent Background)
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = if (position == POS_TOP_LEFT) Gravity.START else Gravity.END
-            setPadding((12 * hudScale).toInt(), (8 * hudScale).toInt(), (12 * hudScale).toInt(), (8 * hudScale).toInt())
+            setPadding((8 * hudScale).toInt(), (4 * hudScale).toInt(), (8 * hudScale).toInt(), (4 * hudScale).toInt())
             setBackgroundColor(Color.TRANSPARENT)
         }
 
-        // Row 1: Cyberpunk Time & Battery
         val headerRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(Color.TRANSPARENT)
         }
 
-        // 1. Digital Clock (Cyberpunk Yellow #FFE600)
         clockTextView = TextView(this).apply {
             textSize = 24f * hudScale
             setTextColor(Color.parseColor("#FFE600"))
@@ -173,20 +203,112 @@ class OverlayService : Service() {
         val spacer = TextView(this).apply { text = "   " }
         headerRow.addView(spacer)
 
-        // 2. Cyberpunk Custom Battery View
-        batteryView = CyberpunkBatteryView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                (120 * hudScale).toInt(),
-                (30 * hudScale).toInt()
-            )
+        batteryTextView = TextView(this).apply {
+            textSize = 12f * hudScale
+            setTextColor(Color.parseColor("#00E5FF"))
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
+            text = "▮▮▮▮▮"
         }
-        headerRow.addView(batteryView)
+        headerRow.addView(batteryTextView)
 
         container.addView(headerRow)
+
+        navTraceTextView = TextView(this).apply {
+            textSize = 14f * hudScale
+            setTextColor(Color.parseColor("#FF0055"))
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
+            setShadowLayer(6f * hudScale, 0f, 0f, Color.parseColor("#CCFF0055"))
+            visibility = View.GONE
+            setPadding(0, (6 * hudScale).toInt(), 0, 0)
+        }
+        container.addView(navTraceTextView)
 
         overlayView = container
         windowManager.addView(overlayView, windowLayoutParams)
         handler.post(clockRunnable)
+    }
+
+    // Glowing Cyberpunk Head-Tracked Cursor Reticle
+    private fun setupHeadTrackedCursor() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, false)
+        if (!enableHeadCursor) return
+
+        cursorView = TextView(this).apply {
+            text = "✛"
+            textSize = 28f
+            setTextColor(Color.parseColor("#00E5FF")) // Cyberpunk Cyan
+            setShadowLayer(10f, 0f, 0f, Color.parseColor("#00E5FF"))
+            gravity = Gravity.CENTER
+        }
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            },
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = cursorX.toInt()
+            y = cursorY.toInt()
+        }
+        cursorParams = params
+
+        try {
+            windowManager.addView(cursorView, cursorParams)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun initXrealUsbDriver() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, false)
+        if (!enableHeadCursor) return
+
+        usbImuDriver = XrealUsbImuDriver(this).apply {
+            onHeadMoveListener = { deltaX, deltaY ->
+                cursorX = (cursorX + deltaX * 15f).coerceIn(0f, 1920f)
+                cursorY = (cursorY + deltaY * 15f).coerceIn(0f, 1080f)
+
+                cursorParams?.let { params ->
+                    params.x = cursorX.toInt()
+                    params.y = cursorY.toInt()
+                    handler.post {
+                        try {
+                            cursorView?.let { v -> windowManager.updateViewLayout(v, params) }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+            }
+
+            onGlassesButtonClickListener = {
+                // XREAL Temple Button Click Feedback Animation
+                handler.post {
+                    cursorView?.setTextColor(Color.parseColor("#FFE600")) // Flash Yellow
+                    handler.postDelayed({
+                        cursorView?.setTextColor(Color.parseColor("#00E5FF"))
+                    }, 200)
+                }
+            }
+        }
+
+        val device = usbImuDriver?.findXrealDevice()
+        if (device != null && usbImuDriver?.hasUsbPermission(device) == true) {
+            usbImuDriver?.startReading(device)
+        }
     }
 
     private fun updateClock() {
@@ -208,8 +330,8 @@ class OverlayService : Service() {
         }
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Cyberpunk Traced Directions Active")
-            .setContentText("Transparent Vector Nav & Time Overlay Active")
+            .setContentTitle("Cyberpunk HUD & Head Cursor Active")
+            .setContentText("XREAL 1s IMU Head Tracking Active")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
 
@@ -219,6 +341,7 @@ class OverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacks(clockRunnable)
+        usbImuDriver?.stopReading()
         try {
             unregisterReceiver(batteryReceiver)
             unregisterReceiver(navReceiver)
@@ -228,6 +351,9 @@ class OverlayService : Service() {
         }
         if (overlayView != null) {
             windowManager.removeView(overlayView)
+        }
+        if (cursorView != null) {
+            try { windowManager.removeView(cursorView) } catch (e: Exception) {}
         }
     }
 
@@ -239,6 +365,7 @@ class OverlayService : Service() {
         const val KEY_SCALE = "hud_scale"
         const val KEY_X_OFFSET = "hud_x_offset"
         const val KEY_Y_OFFSET = "hud_y_offset"
+        const val KEY_ENABLE_HEAD_CURSOR = "enable_head_cursor"
 
         const val POS_TOP_RIGHT = "TOP_RIGHT"
         const val POS_TOP_LEFT = "TOP_LEFT"
