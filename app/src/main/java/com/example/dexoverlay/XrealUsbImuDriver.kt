@@ -22,7 +22,7 @@ class XrealUsbImuDriver(private val context: Context) {
     private var usbManager: UsbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
     private var usbConnection: UsbDeviceConnection? = null
     private var isReading = false
-    private var readThread: Thread? = null
+    private val activeThreads = mutableListOf<Thread>()
     private var isReceiverRegistered = false
 
     var onHeadMoveListener: ((deltaX: Float, deltaY: Float) -> Unit)? = null
@@ -109,8 +109,6 @@ class XrealUsbImuDriver(private val context: Context) {
 
             if (match != null) {
                 log("MATCHED XREAL Device -> VID:0x${Integer.toHexString(match.vendorId).uppercase()} PID:0x${Integer.toHexString(match.productId).uppercase()}")
-            } else {
-                log("No XREAL device matched from list.")
             }
 
             return match
@@ -181,10 +179,10 @@ class XrealUsbImuDriver(private val context: Context) {
                     enableCmd, enableCmd.size, 1000
                 )
             }
-            log("Sent Activation Handshake to Intf $intfIndex. Result=$res")
+            log("Sent Stream ON Command to Intf $intfIndex. Result=$res")
             res >= 0
         } catch (e: Exception) {
-            log("Wakeup packet exception: ${e.message}")
+            log("Wakeup packet exception on Intf $intfIndex: ${e.message}")
             false
         }
     }
@@ -196,8 +194,8 @@ class XrealUsbImuDriver(private val context: Context) {
                 return false
             }
 
-            log("Claiming all interfaces for device ${device.deviceName}...")
-            var activeEndpoint: UsbEndpoint? = null
+            log("Scanning ALL ${device.interfaceCount} interfaces for XREAL 1s (Targeting Intf 8, 9, 10)...")
+            val targetInEndpoints = mutableListOf<Pair<Int, UsbEndpoint>>()
 
             for (i in 0 until device.interfaceCount) {
                 val intf = device.getInterface(i)
@@ -207,8 +205,9 @@ class XrealUsbImuDriver(private val context: Context) {
                 var outEp: UsbEndpoint? = null
                 for (e in 0 until intf.endpointCount) {
                     val ep = intf.getEndpoint(e)
-                    if (ep.direction == UsbConstants.USB_DIR_IN && activeEndpoint == null) {
-                        activeEndpoint = ep
+                    if (ep.direction == UsbConstants.USB_DIR_IN) {
+                        targetInEndpoints.add(Pair(i, ep))
+                        log("Found IN Endpoint 0x${Integer.toHexString(ep.address).uppercase()} on Interface $i")
                     } else if (ep.direction == UsbConstants.USB_DIR_OUT) {
                         outEp = ep
                     }
@@ -216,81 +215,87 @@ class XrealUsbImuDriver(private val context: Context) {
                 sendXrealImuWakeupPacket(connection, i, outEp)
             }
 
-            if (activeEndpoint == null) {
-                log("No IN endpoint found!")
+            if (targetInEndpoints.isEmpty()) {
+                log("No IN endpoints found across any interface!")
                 return false
             }
 
             usbConnection = connection
             isReading = true
+            activeThreads.clear()
 
-            val ep = activeEndpoint
-            log("Reading from Endpoint 0x${Integer.toHexString(ep.address).uppercase()} (PacketSize: ${ep.maxPacketSize})")
+            log("Launching ${targetInEndpoints.size} concurrent reader threads for Interfaces 8, 9, 10...")
 
-            readThread = Thread {
-                val buffer = ByteArray(64)
-                var lastButtonState = false
-                var lastPressTime = 0L
-                var packetCount = 0
+            for ((intfIndex, ep) in targetInEndpoints) {
+                val t = Thread {
+                    val buffer = ByteArray(64)
+                    var lastButtonState = false
+                    var lastPressTime = 0L
+                    var packetCount = 0
 
-                val usbRequest = UsbRequest()
-                val byteBuffer = ByteBuffer.wrap(buffer)
-                usbRequest.initialize(connection, ep)
+                    val usbRequest = UsbRequest()
+                    val byteBuffer = ByteBuffer.wrap(buffer)
+                    usbRequest.initialize(connection, ep)
 
-                while (isReading) {
-                    var bytesRead = connection.bulkTransfer(ep, buffer, buffer.size, 100)
+                    log("Started listener on Intf $intfIndex Endpoint 0x${Integer.toHexString(ep.address).uppercase()}")
 
-                    if (bytesRead < 16) {
-                        usbRequest.queue(byteBuffer, buffer.size)
-                        if (connection.requestWait() == usbRequest) {
-                            bytesRead = buffer.size
-                        }
-                    }
+                    while (isReading) {
+                        var bytesRead = connection.bulkTransfer(ep, buffer, buffer.size, 100)
 
-                    if (bytesRead >= 16) {
-                        packetCount++
-                        if (packetCount % 200 == 0) {
-                            log("USB Packets Stream Active! Received: $packetCount packets")
-                        }
-
-                        val gyroX: Float
-                        val gyroY: Float
-
-                        if (bytesRead >= 38) {
-                            val bb = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN)
-                            gyroX = bb.getShort(8).toFloat() / 100.0f
-                            gyroY = bb.getShort(10).toFloat() / 100.0f
-                        } else {
-                            val rawGyroX = ((buffer[3].toInt() and 0xFF) shl 8) or (buffer[2].toInt() and 0xFF)
-                            val rawGyroY = ((buffer[5].toInt() and 0xFF) shl 8) or (buffer[4].toInt() and 0xFF)
-                            val gX = if (rawGyroX > 32767) rawGyroX - 65536 else rawGyroX
-                            val gY = if (rawGyroY > 32767) rawGyroY - 65536 else rawGyroY
-                            gyroX = gX / 400f
-                            gyroY = gY / 400f
-                        }
-
-                        val deltaX = gyroY * 0.5f
-                        val deltaY = -gyroX * 0.5f
-
-                        if (Math.abs(deltaX) > 0.01f || Math.abs(deltaY) > 0.01f) {
-                            onHeadMoveListener?.invoke(deltaX, deltaY)
-                        }
-
-                        val btnBitmask = if (bytesRead >= 39) buffer[38].toInt() else 0
-                        val buttonPressed = (btnBitmask and 0x08) != 0 || (btnBitmask and 0x01) != 0 || (buffer[10].toInt() and 0x01) != 0
-                        val currentTime = System.currentTimeMillis()
-
-                        if (buttonPressed && !lastButtonState) {
-                            if (currentTime - lastPressTime > 250) {
-                                log("Glasses Temple Button Click Detected!")
-                                onGlassesSingleTapListener?.invoke()
-                                lastPressTime = currentTime
+                        if (bytesRead < 16) {
+                            usbRequest.queue(byteBuffer, buffer.size)
+                            if (connection.requestWait() == usbRequest) {
+                                bytesRead = buffer.size
                             }
                         }
-                        lastButtonState = buttonPressed
+
+                        if (bytesRead >= 16) {
+                            packetCount++
+                            if (packetCount % 100 == 0) {
+                                log("⚡ STREAM ACTIVE on Intf $intfIndex Ep 0x${Integer.toHexString(ep.address).uppercase()}! Packets: $packetCount")
+                            }
+
+                            val gyroX: Float
+                            val gyroY: Float
+
+                            if (bytesRead >= 38) {
+                                val bb = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN)
+                                gyroX = bb.getShort(8).toFloat() / 100.0f
+                                gyroY = bb.getShort(10).toFloat() / 100.0f
+                            } else {
+                                val rawGyroX = ((buffer[3].toInt() and 0xFF) shl 8) or (buffer[2].toInt() and 0xFF)
+                                val rawGyroY = ((buffer[5].toInt() and 0xFF) shl 8) or (buffer[4].toInt() and 0xFF)
+                                val gX = if (rawGyroX > 32767) rawGyroX - 65536 else rawGyroX
+                                val gY = if (rawGyroY > 32767) rawGyroY - 65536 else rawGyroY
+                                gyroX = gX / 400f
+                                gyroY = gY / 400f
+                            }
+
+                            val deltaX = gyroY * 0.5f
+                            val deltaY = -gyroX * 0.5f
+
+                            if (Math.abs(deltaX) > 0.005f || Math.abs(deltaY) > 0.005f) {
+                                onHeadMoveListener?.invoke(deltaX, deltaY)
+                            }
+
+                            val btnBitmask = if (bytesRead >= 39) buffer[38].toInt() else 0
+                            val buttonPressed = (btnBitmask and 0x08) != 0 || (btnBitmask and 0x01) != 0 || (buffer[10].toInt() and 0x01) != 0
+                            val currentTime = System.currentTimeMillis()
+
+                            if (buttonPressed && !lastButtonState) {
+                                if (currentTime - lastPressTime > 250) {
+                                    log("🎯 GLASSES TEMPLE BUTTON TAP DETECTED on Intf $intfIndex!")
+                                    onGlassesSingleTapListener?.invoke()
+                                    lastPressTime = currentTime
+                                }
+                            }
+                            lastButtonState = buttonPressed
+                        }
                     }
-                }
-            }.apply { start() }
+                }.apply { start() }
+
+                activeThreads.add(t)
+            }
 
             return true
         } catch (e: Exception) {
@@ -308,8 +313,10 @@ class XrealUsbImuDriver(private val context: Context) {
             } catch (e: Exception) {}
         }
         try {
-            readThread?.interrupt()
-            readThread = null
+            for (t in activeThreads) {
+                t.interrupt()
+            }
+            activeThreads.clear()
             usbConnection?.close()
         } catch (e: Exception) {
             e.printStackTrace()
