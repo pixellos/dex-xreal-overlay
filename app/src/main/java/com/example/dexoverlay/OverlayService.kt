@@ -176,15 +176,21 @@ class OverlayService : Service() {
         }
         windowLayoutParams = params
 
-        // 100% Pure Transparent Root Container for XREAL AR Micro-OLED
+        // Authentic Cyberpunk HUD Container with Notched Background
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = if (position == POS_TOP_LEFT) Gravity.START else Gravity.END
-            setPadding((8 * hudScale).toInt(), (4 * hudScale).toInt(), (8 * hudScale).toInt(), (4 * hudScale).toInt())
-            setBackgroundColor(Color.TRANSPARENT)
+            setPadding((16 * hudScale).toInt(), (12 * hudScale).toInt(), (16 * hudScale).toInt(), (12 * hudScale).toInt())
+            
+            background = CyberpunkNotchedDrawable(
+                backgroundColor = Color.parseColor("#99080A0F"), // Semi-transparent dark blue
+                borderColor = Color.parseColor("#00E5FF"), // Neon Cyan
+                glowColor = Color.parseColor("#00E5FF"),
+                notchSize = 12f * hudScale
+            )
         }
 
-        // --- Row 1: Cyberpunk Time & Battery Bar ---
+        // Row 1: Cyberpunk Time & Battery
         val headerRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -276,6 +282,60 @@ class OverlayService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    // --- Custom Authentic Cyberpunk Notched Graphics Engine ---
+    private class CyberpunkNotchedDrawable(
+        val backgroundColor: Int,
+        val borderColor: Int,
+        val glowColor: Int = 0,
+        val notchSize: Float = 16f
+    ) : android.graphics.drawable.Drawable() {
+
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        private val strokePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        private val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        private val path = android.graphics.Path()
+
+        override fun draw(canvas: android.graphics.Canvas) {
+            val b = bounds
+            val w = b.width().toFloat()
+            val h = b.height().toFloat()
+
+            path.reset()
+            // HUD Geometry: Chamfered Corners
+            path.moveTo(0f, 0f)
+            path.lineTo(w - notchSize, 0f)
+            path.lineTo(w, notchSize)
+            path.lineTo(w, h)
+            path.lineTo(notchSize, h)
+            path.lineTo(0f, h - notchSize)
+            path.close()
+
+            // 1. Draw Background
+            paint.color = backgroundColor
+            paint.style = android.graphics.Paint.Style.FILL
+            canvas.drawPath(path, paint)
+
+            // 2. Draw Glow
+            if (glowColor != 0) {
+                glowPaint.color = glowColor
+                glowPaint.style = android.graphics.Paint.Style.STROKE
+                glowPaint.strokeWidth = 3f
+                glowPaint.maskFilter = android.graphics.BlurMaskFilter(6f, android.graphics.BlurMaskFilter.Blur.OUTER)
+                canvas.drawPath(path, glowPaint)
+            }
+
+            // 3. Draw Main Border
+            strokePaint.color = borderColor
+            strokePaint.style = android.graphics.Paint.Style.STROKE
+            strokePaint.strokeWidth = 2f
+            canvas.drawPath(path, strokePaint)
+        }
+
+        override fun setAlpha(alpha: Int) { paint.alpha = alpha }
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) { paint.colorFilter = colorFilter }
+        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+    }
 
     companion object {
         const val PREFS_NAME = "dex_hud_prefs"
