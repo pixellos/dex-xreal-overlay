@@ -33,6 +33,7 @@ class OverlayService : Service() {
     private var clockTextView: TextView? = null
     private var batteryTextView: TextView? = null
     private var navTraceTextView: TextView? = null
+    private var windowLayoutParams: WindowManager.LayoutParams? = null
 
     private var isNavActive = false
 
@@ -77,6 +78,26 @@ class OverlayService : Service() {
         }
     }
 
+    // Real-Time Smooth Window Position Update Receiver (Zero Service Restarts!)
+    private val positionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_UPDATE_POSITION) {
+                val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val hudScale = prefs.getFloat(KEY_SCALE, 1.0f).coerceIn(0.25f, 1.5f)
+                val xOffset = prefs.getInt(KEY_X_OFFSET, 40)
+                val yOffset = prefs.getInt(KEY_Y_OFFSET, 40)
+
+                windowLayoutParams?.let { params ->
+                    params.x = (xOffset * hudScale).toInt()
+                    params.y = (yOffset * hudScale).toInt()
+                    overlayView?.let { view ->
+                        windowManager.updateViewLayout(view, params)
+                    }
+                }
+            }
+        }
+    }
+
     // Navigation Listener Receiver for Cyberpunk Traced Directions
     private val navReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -101,12 +122,20 @@ class OverlayService : Service() {
         super.onCreate()
         startForegroundServiceNotification()
         
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_BATTERY_CHANGED)
+            addAction(MapsNavListenerService.ACTION_NAV_UPDATE)
+            addAction(ACTION_UPDATE_POSITION)
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), RECEIVER_NOT_EXPORTED)
             registerReceiver(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE), RECEIVER_NOT_EXPORTED)
+            registerReceiver(positionReceiver, IntentFilter(ACTION_UPDATE_POSITION), RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             registerReceiver(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE))
+            registerReceiver(positionReceiver, IntentFilter(ACTION_UPDATE_POSITION))
         }
 
         setupOverlayWindow()
@@ -128,7 +157,7 @@ class OverlayService : Service() {
             Gravity.TOP or Gravity.END
         }
 
-        val windowLayoutParams = WindowManager.LayoutParams(
+        val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -145,6 +174,7 @@ class OverlayService : Service() {
             x = (xOffset * hudScale).toInt()
             y = (yOffset * hudScale).toInt()
         }
+        windowLayoutParams = params
 
         // 100% Pure Transparent Root Container for XREAL AR Micro-OLED
         val container = LinearLayout(this).apply {
@@ -236,6 +266,7 @@ class OverlayService : Service() {
         try {
             unregisterReceiver(batteryReceiver)
             unregisterReceiver(navReceiver)
+            unregisterReceiver(positionReceiver)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -255,5 +286,7 @@ class OverlayService : Service() {
 
         const val POS_TOP_RIGHT = "TOP_RIGHT"
         const val POS_TOP_LEFT = "TOP_LEFT"
+
+        const val ACTION_UPDATE_POSITION = "com.example.dexoverlay.UPDATE_POSITION"
     }
 }
