@@ -24,6 +24,9 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Force stop running OverlayService to clean up any cached WindowManager views
+        stopOverlayService()
+
         val prefs = getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
 
         val rootLayout = LinearLayout(this).apply {
