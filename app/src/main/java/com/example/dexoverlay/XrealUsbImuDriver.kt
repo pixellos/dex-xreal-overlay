@@ -15,6 +15,7 @@ import android.hardware.usb.UsbRequest
 import android.os.Build
 import android.util.Log
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class XrealUsbImuDriver(private val context: Context) {
 
@@ -124,31 +125,30 @@ class XrealUsbImuDriver(private val context: Context) {
         }
     }
 
-    // Send XREAL 1s IMU Wakeup Magic Packet (Control Transfer 0xFD command 0x1D)
-    private fun sendXrealImuWakeupPacket(connection: UsbDeviceConnection, intfIndex: Int): Boolean {
+    // Send XREAL 1s IMU Activation Stream Handshake (0xAA 0xC5)
+    private fun sendXrealImuWakeupPacket(connection: UsbDeviceConnection, intfIndex: Int, outEndpoint: UsbEndpoint?): Boolean {
         return try {
-            // Magic payload packet structure to wake up XREAL Air / 1s MCU IMU stream
-            val magicPacket = byteArrayOf(
-                0xFD.toByte(), 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1D.toByte(),
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x01
-            )
+            val enableCmd = ByteArray(64)
+            enableCmd[0] = 0xAA.toByte()
+            enableCmd[1] = 0xC5.toByte()
+            enableCmd[2] = 0x00.toByte()
+            enableCmd[3] = 0x01.toByte() // Stream ON command
 
-            // USB SetReport Control Transfer (RequestType = 0x21, Request = 0x09, Value = 0x0300)
-            val result = connection.controlTransfer(
-                0x21, // USB_TYPE_CLASS | USB_RECIP_INTERFACE
-                0x09, // SET_REPORT
-                0x0300, // Report Type Feature / Output
-                intfIndex,
-                magicPacket,
-                magicPacket.size,
-                1000
-            )
-
-            Log.d("XrealUsbDriver", "Sent XREAL IMU Wakeup Packet. Result=$result")
-            result >= 0
+            val res = if (outEndpoint != null) {
+                connection.bulkTransfer(outEndpoint, enableCmd, enableCmd.size, 1000)
+            } else {
+                connection.controlTransfer(
+                    0x21, // SET_REPORT
+                    0x09, // HID SET_REPORT
+                    0x0300,
+                    intfIndex,
+                    enableCmd, enableCmd.size, 1000
+                )
+            }
+            Log.d("XrealUsbDriver", "Sent XREAL IMU Stream ON Activation Handshake. Result=$res")
+            res >= 0
         } catch (e: Exception) {
-            Log.e("XrealUsbDriver", "Failed to send wakeup packet", e)
+            Log.e("XrealUsbDriver", "Failed to send stream activation handshake", e)
             false
         }
     }
@@ -158,29 +158,41 @@ class XrealUsbImuDriver(private val context: Context) {
             val connection = usbManager.openDevice(device) ?: return false
 
             var targetIntf: UsbInterface? = null
-            var targetEndpoint: UsbEndpoint? = null
+            var targetInEp: UsbEndpoint? = null
+            var targetOutEp: UsbEndpoint? = null
 
             for (i in 0 until device.interfaceCount) {
                 val intf = device.getInterface(i)
                 connection.claimInterface(intf, true)
-                sendXrealImuWakeupPacket(connection, i)
+
+                var inEp: UsbEndpoint? = null
+                var outEp: UsbEndpoint? = null
 
                 for (e in 0 until intf.endpointCount) {
                     val ep = intf.getEndpoint(e)
-                    if (ep.direction == UsbConstants.USB_DIR_IN) {
-                        targetIntf = intf
-                        targetEndpoint = ep
-                        break
+                    if (ep.direction == UsbConstants.USB_DIR_IN && (ep.address == 0x84 || ep.address == 0x86 || targetInEp == null)) {
+                        inEp = ep
+                    } else if (ep.direction == UsbConstants.USB_DIR_OUT) {
+                        outEp = ep
                     }
                 }
-                if (targetEndpoint != null) break
+
+                if (inEp != null) {
+                    targetIntf = intf
+                    targetInEp = inEp
+                    targetOutEp = outEp
+                    sendXrealImuWakeupPacket(connection, i, outEp)
+                    break
+                }
             }
 
-            if (targetIntf == null || targetEndpoint == null) return false
+            if (targetIntf == null || targetInEp == null) return false
 
             usbConnection = connection
             usbInterface = targetIntf
             isReading = true
+
+            val inEp = targetInEp
 
             readThread = Thread {
                 val buffer = ByteArray(64)
@@ -189,10 +201,10 @@ class XrealUsbImuDriver(private val context: Context) {
 
                 val usbRequest = UsbRequest()
                 val byteBuffer = ByteBuffer.wrap(buffer)
-                usbRequest.initialize(connection, targetEndpoint)
+                usbRequest.initialize(connection, inEp)
 
                 while (isReading) {
-                    var bytesRead = connection.bulkTransfer(targetEndpoint, buffer, buffer.size, 100)
+                    var bytesRead = connection.bulkTransfer(inEp, buffer, buffer.size, 100)
 
                     if (bytesRead < 16) {
                         usbRequest.queue(byteBuffer, buffer.size)
@@ -201,21 +213,23 @@ class XrealUsbImuDriver(private val context: Context) {
                         }
                     }
 
-                    if (bytesRead >= 16) {
-                        val rawGyroX = ((buffer[3].toInt() and 0xFF) shl 8) or (buffer[2].toInt() and 0xFF)
-                        val rawGyroY = ((buffer[5].toInt() and 0xFF) shl 8) or (buffer[4].toInt() and 0xFF)
+                    if (bytesRead >= 38) {
+                        val bb = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN)
 
-                        val gyroX = if (rawGyroX > 32767) rawGyroX - 65536 else rawGyroX
-                        val gyroY = if (rawGyroY > 32767) rawGyroY - 65536 else rawGyroY
+                        // Gyroscope Pitch (X) and Yaw (Y) angular velocity
+                        val rawGyroX = bb.getShort(8).toFloat() / 100.0f
+                        val rawGyroY = bb.getShort(10).toFloat() / 100.0f
 
-                        val deltaX = (gyroY / 400f)
-                        val deltaY = -(gyroX / 400f)
+                        val deltaX = rawGyroY * 0.5f
+                        val deltaY = -rawGyroX * 0.5f
 
                         if (Math.abs(deltaX) > 0.01f || Math.abs(deltaY) > 0.01f) {
                             onHeadMoveListener?.invoke(deltaX, deltaY)
                         }
 
-                        val buttonPressed = (buffer[10].toInt() and 0x01) != 0 || (buffer[12].toInt() and 0x01) != 0
+                        // Temple Buttons Bitmask at Byte Offset 38 (0x26)
+                        val btnBitmask = buffer[38].toInt()
+                        val buttonPressed = (btnBitmask and 0x08) != 0 || (btnBitmask and 0x01) != 0 || (buffer[10].toInt() and 0x01) != 0
                         val currentTime = System.currentTimeMillis()
 
                         if (buttonPressed && !lastButtonState) {
@@ -255,8 +269,8 @@ class XrealUsbImuDriver(private val context: Context) {
     }
 
     companion object {
-        val XREAL_VIDS = intArrayOf(0x3318, 0x28E5, 0x0483, 0x0403)
-        val XREAL_PIDS = intArrayOf(0x0424, 0x0423, 0x0428, 0x0422, 0x0571, 0x0425)
-        const val ACTION_USB_PERMISSION = "com.example.dexoverlay.USB_PERMISSION"
+        val XREAL_VIDS = intArrayOf(0x3318, 0x04D8, 0x28E5, 0x0483, 0x0403)
+        val XREAL_PIDS = intArrayOf(0x0425, 0x0429, 0x0424, 0x0423, 0x0428, 0x0432, 0x0426, 0x0303, 0x0571)
+        const val ACTION_USB_PERMISSION = "com.xreal.hid.USB_PERMISSION"
     }
 }
