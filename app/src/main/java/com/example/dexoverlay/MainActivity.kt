@@ -36,175 +36,160 @@ class MainActivity : Activity() {
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(24, 24, 24, 24)
-            setBackgroundColor(Color.parseColor("#03060B")) // Authentic Cyberpunk Netrunner Pitch Dark
+            setPadding(28, 20, 28, 28)
+            setBackgroundColor(Color.parseColor("#03060B")) // Sleek Cyberpunk Netrunner Dark
         }
 
-        // --- Cyberdeck Top Banner ---
+        // --- Streamlined Cyberdeck Header ---
         val headerCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(16, 12, 16, 12)
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#09111E"))
                 setStroke(2, Color.parseColor("#FF0055"))
-                cornerRadius = 2f
+                cornerRadius = 3f
             }
         }
 
-        val subtitleText = TextView(this).apply {
-            text = "CYBERDECK v 552.322"
-            textSize = 12f
-            setTextColor(Color.parseColor("#FF0055"))
-            typeface = Typeface.MONOSPACE
-            setTypeface(typeface, Typeface.BOLD)
-        }
-        headerCard.addView(subtitleText)
-
-        val titleText = TextView(this).apply {
-            text = "AVAILABLE QUICKHACKS:"
-            textSize = 18f
+        val headerText = TextView(this).apply {
+            text = "CYBERDECK v552 // HUD OS"
+            textSize = 14f
             setTextColor(Color.parseColor("#FFE600"))
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 2, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        headerCard.addView(titleText)
-        rootLayout.addView(headerCard)
+        headerCard.addView(headerText)
 
-        val spacer1 = TextView(this).apply { text = "\n" }
-        rootLayout.addView(spacer1)
-
-        // --- Quickhack 1: CYBERWARE IMU (XREAL Head Tracking & Button Driver) ---
-        val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, false)
-        val singleTapAction = prefs.getString(OverlayService.KEY_SINGLE_TAP_ACTION, OverlayService.SINGLE_TAP_ACTION_CLICK) ?: OverlayService.SINGLE_TAP_ACTION_CLICK
-
-        val imuCard = createAuthenticQuickhackSlot(
-            name = "CYBERWARE IMU // HEAD CURSOR & SINGLE TAP",
-            tier = "ICONIC // TIER 5",
-            statusTag = "READY | INSTALLED",
-            ramCost = "24",
-            iconText = "👓",
-            isHighlighted = true
-        )
-
-        val usbStatusText = TextView(this).apply {
-            text = usbDriver.getAllConnectedUsbDevicesSummary()
+        val statusTag = TextView(this).apply {
+            text = "[ READY ]"
             textSize = 10f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
-            setPadding(20, 6, 20, 4)
         }
+        headerCard.addView(statusTag)
+        rootLayout.addView(headerCard)
 
-        val btnConnectUsb = Button(this).apply {
-            text = "⚡ [ GRANT XREAL USB SENSOR PERMISSION ]"
-            setBackgroundColor(Color.parseColor("#09111E"))
-            setTextColor(Color.parseColor("#00E5FF"))
-            typeface = Typeface.MONOSPACE
-            textSize = 11f
-            setOnClickListener {
-                try {
-                    usbStatusText.text = usbDriver.getAllConnectedUsbDevicesSummary()
-                    requestXrealUsbPermission()
-                } catch (e: Exception) {
-                    Toast.makeText(this@MainActivity, "USB Permission error: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-        imuCard.addView(btnConnectUsb)
-        imuCard.addView(usbStatusText)
+        val spacer1 = TextView(this).apply { text = " " }
+        rootLayout.addView(spacer1)
+
+        // --- Card 1: XREAL Glasses & Head Cursor Control ---
+        val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, false)
+        val singleTapAction = prefs.getString(OverlayService.KEY_SINGLE_TAP_ACTION, OverlayService.SINGLE_TAP_ACTION_CLICK) ?: OverlayService.SINGLE_TAP_ACTION_CLICK
+
+        val imuCard = createCompactCard("👓 XREAL IMU & QUICK ACTION", "#00E5FF")
 
         val cbHeadCursor = CheckBox(this).apply {
-            text = "[ ENABLE XREAL 1s IMU HEAD-TRACKED CURSOR ]"
-            setTextColor(Color.parseColor("#00E5FF"))
+            text = " Enable XREAL 1s Head Cursor"
+            setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
+            textSize = 12f
             isChecked = enableHeadCursor
-            setPadding(20, 8, 20, 4)
-            setOnCheckedChangeListener { _, isChecked ->
-                prefs.edit().putBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, isChecked).apply()
-                Toast.makeText(this@MainActivity, "Head cursor ${if (isChecked) "ENABLED" else "DISABLED"}", Toast.LENGTH_SHORT).show()
-                restartOverlayServiceIfRunning()
+            setOnCheckedChangeListener { buttonView, isChecked ->
+                if (buttonView.isPressed) {
+                    prefs.edit().putBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, isChecked).apply()
+                    Toast.makeText(this@MainActivity, "Head Cursor ${if (isChecked) "ON" else "OFF"}", Toast.LENGTH_SHORT).show()
+                    restartOverlayServiceIfRunning()
+                }
             }
         }
         imuCard.addView(cbHeadCursor)
 
+        val btnConnectUsb = Button(this).apply {
+            text = "⚡ GRANT USB GLASSES PERMISSION"
+            setBackgroundColor(Color.parseColor("#0C182B"))
+            setTextColor(Color.parseColor("#00E5FF"))
+            typeface = Typeface.MONOSPACE
+            textSize = 10f
+            setOnClickListener {
+                try {
+                    requestXrealUsbPermission()
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "USB Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        imuCard.addView(btnConnectUsb)
+
         val tapLabel = TextView(this).apply {
-            text = "XREAL Temple Button Single Tap Action:"
-            textSize = 11f
+            text = "Single Tap Glasses Button Action:"
+            textSize = 10f
             setTextColor(Color.parseColor("#FFE600"))
             typeface = Typeface.MONOSPACE
-            setPadding(20, 6, 20, 2)
+            setPadding(0, 6, 0, 2)
         }
         imuCard.addView(tapLabel)
 
         val tapGroup = RadioGroup(this).apply {
             orientation = RadioGroup.VERTICAL
-            setPadding(20, 2, 20, 10)
         }
 
         val rbClick = RadioButton(this).apply {
-            text = "(●) Click at Head Cursor Position"
+            id = View.generateViewId()
+            text = "Execute Click at Head Cursor"
             setTextColor(Color.WHITE)
+            textSize = 11f
             typeface = Typeface.MONOSPACE
-            isChecked = singleTapAction == OverlayService.SINGLE_TAP_ACTION_CLICK
+            isChecked = (singleTapAction == OverlayService.SINGLE_TAP_ACTION_CLICK)
         }
         val rbToggleHud = RadioButton(this).apply {
-            text = "( ) Toggle Cyberpunk HUD On/Off"
+            id = View.generateViewId()
+            text = "Toggle HUD Overlay On/Off"
             setTextColor(Color.WHITE)
+            textSize = 11f
             typeface = Typeface.MONOSPACE
-            isChecked = singleTapAction == OverlayService.SINGLE_TAP_ACTION_TOGGLE_HUD
+            isChecked = (singleTapAction == OverlayService.SINGLE_TAP_ACTION_TOGGLE_HUD)
         }
         val rbRecenter = RadioButton(this).apply {
-            text = "( ) Recenter Cursor to Screen Center"
+            id = View.generateViewId()
+            text = "Recenter Cursor to Center"
             setTextColor(Color.WHITE)
+            textSize = 11f
             typeface = Typeface.MONOSPACE
-            isChecked = singleTapAction == OverlayService.SINGLE_TAP_ACTION_RECENTER
+            isChecked = (singleTapAction == OverlayService.SINGLE_TAP_ACTION_RECENTER)
         }
 
         tapGroup.addView(rbClick)
         tapGroup.addView(rbToggleHud)
         tapGroup.addView(rbRecenter)
 
-        tapGroup.setOnCheckedChangeListener { _, checkedId ->
-            val selectedAction = when (checkedId) {
-                rbToggleHud.id -> OverlayService.SINGLE_TAP_ACTION_TOGGLE_HUD
-                rbRecenter.id -> OverlayService.SINGLE_TAP_ACTION_RECENTER
-                else -> OverlayService.SINGLE_TAP_ACTION_CLICK
+        tapGroup.setOnCheckedChangeListener { group, checkedId ->
+            val checkedRb = group.findViewById<RadioButton>(checkedId)
+            if (checkedRb != null && checkedRb.isPressed) {
+                val selectedAction = when (checkedId) {
+                    rbToggleHud.id -> OverlayService.SINGLE_TAP_ACTION_TOGGLE_HUD
+                    rbRecenter.id -> OverlayService.SINGLE_TAP_ACTION_RECENTER
+                    else -> OverlayService.SINGLE_TAP_ACTION_CLICK
+                }
+                prefs.edit().putString(OverlayService.KEY_SINGLE_TAP_ACTION, selectedAction).apply()
+                Toast.makeText(this, "Quick Action Updated!", Toast.LENGTH_SHORT).show()
+                restartOverlayServiceIfRunning()
             }
-            prefs.edit().putString(OverlayService.KEY_SINGLE_TAP_ACTION, selectedAction).apply()
-            Toast.makeText(this, "Single Tap Action Updated!", Toast.LENGTH_SHORT).show()
-            restartOverlayServiceIfRunning()
         }
         imuCard.addView(tapGroup)
-
         rootLayout.addView(imuCard)
 
-        val spacer_imu = TextView(this).apply { text = " " }
-        rootLayout.addView(spacer_imu)
+        val spacer2 = TextView(this).apply { text = " " }
+        rootLayout.addView(spacer2)
 
-        // --- Quickhack 2: SYSTEM COLLAPSE (HUD Scale 0.25x - 1.50x) ---
+        // --- Card 2: HUD Customization (Scale & Position) ---
         val currentScale = prefs.getFloat(OverlayService.KEY_SCALE, 1.0f)
-        val scaleCard = createAuthenticQuickhackSlot(
-            name = "SYSTEM COLLAPSE // HUD SCALE",
-            tier = "ICONIC // TIER 5",
-            statusTag = "READY",
-            ramCost = "28",
-            iconText = "🗲",
-            isHighlighted = false
-        )
+        val currentPos = prefs.getString(OverlayService.KEY_POSITION, OverlayService.POS_TOP_RIGHT)
+
+        val configCard = createCompactCard("🎯 HUD SCALE & CORNER POSITION", "#00E5FF")
 
         val scaleLabel = TextView(this).apply {
             text = "HUD Size Scale: ${String.format("%.2f", currentScale)}x"
-            textSize = 12f
+            textSize = 11f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
-            setPadding(20, 8, 20, 4)
         }
-        scaleCard.addView(scaleLabel)
+        configCard.addView(scaleLabel)
 
         val seekBar = SeekBar(this).apply {
             max = 125
             progress = ((currentScale - 0.25f) * 100).toInt()
-            setPadding(20, 0, 20, 14)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     val newScale = 0.25f + (progress / 100f)
@@ -220,80 +205,64 @@ class MainActivity : Activity() {
                 }
             })
         }
-        scaleCard.addView(seekBar)
-        rootLayout.addView(scaleCard)
-
-        val spacer2 = TextView(this).apply { text = " " }
-        rootLayout.addView(spacer2)
-
-        // --- Quickhack 3: OVERHEAT (Corner Position) ---
-        val currentPos = prefs.getString(OverlayService.KEY_POSITION, OverlayService.POS_TOP_RIGHT)
-        val posCard = createAuthenticQuickhackSlot(
-            name = "OVERHEAT // CORNER POSITION",
-            tier = "ICONIC // TIER 5",
-            statusTag = "READY | TRACEABLE",
-            ramCost = "9",
-            iconText = "🎯",
-            isHighlighted = false
-        )
+        configCard.addView(seekBar)
 
         val posGroup = RadioGroup(this).apply {
             orientation = RadioGroup.HORIZONTAL
-            setPadding(20, 8, 20, 14)
+            gravity = Gravity.CENTER_HORIZONTAL
         }
 
         val rbTopRight = RadioButton(this).apply {
-            text = "[ TOP-RIGHT ]"
+            id = View.generateViewId()
+            text = "Top-Right  "
             setTextColor(Color.parseColor("#FFE600"))
             typeface = Typeface.MONOSPACE
-            isChecked = currentPos == OverlayService.POS_TOP_RIGHT
+            textSize = 11f
+            isChecked = (currentPos == OverlayService.POS_TOP_RIGHT)
         }
         val rbTopLeft = RadioButton(this).apply {
-            text = "[ TOP-LEFT ]"
+            id = View.generateViewId()
+            text = "Top-Left"
             setTextColor(Color.parseColor("#FFE600"))
             typeface = Typeface.MONOSPACE
-            isChecked = currentPos == OverlayService.POS_TOP_LEFT
+            textSize = 11f
+            isChecked = (currentPos == OverlayService.POS_TOP_LEFT)
         }
 
         posGroup.addView(rbTopRight)
         posGroup.addView(rbTopLeft)
 
-        posGroup.setOnCheckedChangeListener { _, checkedId ->
-            val selectedPos = if (checkedId == rbTopLeft.id) OverlayService.POS_TOP_LEFT else OverlayService.POS_TOP_RIGHT
-            prefs.edit().putString(OverlayService.KEY_POSITION, selectedPos).apply()
-            restartOverlayServiceIfRunning()
+        posGroup.setOnCheckedChangeListener { group, checkedId ->
+            val checkedRb = group.findViewById<RadioButton>(checkedId)
+            if (checkedRb != null && checkedRb.isPressed) {
+                val selectedPos = if (checkedId == rbTopLeft.id) OverlayService.POS_TOP_LEFT else OverlayService.POS_TOP_RIGHT
+                prefs.edit().putString(OverlayService.KEY_POSITION, selectedPos).apply()
+                restartOverlayServiceIfRunning()
+            }
         }
-        posCard.addView(posGroup)
-        rootLayout.addView(posCard)
+        configCard.addView(posGroup)
+        rootLayout.addView(configCard)
 
         val spacer3 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer3)
 
-        // --- Quickhack 4: CRIPPLE MOVEMENT (HUD Alignment Calibrator) ---
+        // --- Card 3: Alignment Calibrator ---
         val xOff = prefs.getInt(OverlayService.KEY_X_OFFSET, 40)
         val yOff = prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)
-        val calibrationCard = createAuthenticQuickhackSlot(
-            name = "CRIPPLE MOVEMENT // ALIGNMENT",
-            tier = "ICONIC // TIER 5",
-            statusTag = "READY | TRACEABLE",
-            ramCost = "6",
-            iconText = "📍",
-            isHighlighted = false
-        )
+
+        val alignCard = createCompactCard("📍 HUD ALIGNMENT CALIBRATOR", "#00E5FF")
 
         val offsetLabel = TextView(this).apply {
             text = "Offset: X=$xOff, Y=$yOff"
-            textSize = 12f
+            textSize = 11f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
-            setPadding(20, 6, 20, 4)
         }
-        calibrationCard.addView(offsetLabel)
+        alignCard.addView(offsetLabel)
 
         val dpadLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(0, 4, 0, 4)
         }
 
         fun updateOffset(dx: Int, dy: Int) {
@@ -355,59 +324,7 @@ class MainActivity : Activity() {
             setOnClickListener { updateOffset(0, 10) }
         }
         dpadLayout.addView(btnDown)
-        calibrationCard.addView(dpadLayout)
-
-        val joystickPad = View(this).apply {
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#060C16"))
-                setStroke(1, Color.parseColor("#00E5FF"))
-                cornerRadius = 2f
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                140
-            ).apply { setMargins(20, 6, 20, 6) }
-
-            var lastX = 0f
-            var lastY = 0f
-
-            setOnTouchListener { v, event ->
-                when (event.action) {
-                    android.view.MotionEvent.ACTION_DOWN -> {
-                        v.parent.requestDisallowInterceptTouchEvent(true)
-                        lastX = event.x
-                        lastY = event.y
-                    }
-                    android.view.MotionEvent.ACTION_MOVE -> {
-                        val dx = (event.x - lastX).toInt()
-                        val dy = (event.y - lastY).toInt()
-
-                        if (dx != 0 || dy != 0) {
-                            val curX = prefs.getInt(OverlayService.KEY_X_OFFSET, 40)
-                            val curY = prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)
-                            val newX = (curX + dx).coerceIn(-500, 1500)
-                            val newY = (curY + dy).coerceIn(-500, 1500)
-
-                            prefs.edit().apply {
-                                putInt(OverlayService.KEY_X_OFFSET, newX)
-                                putInt(OverlayService.KEY_Y_OFFSET, newY)
-                            }.apply()
-
-                            offsetLabel.text = "Offset: X=$newX, Y=$newY"
-                            sendBroadcast(Intent(OverlayService.ACTION_UPDATE_POSITION))
-
-                            lastX = event.x
-                            lastY = event.y
-                        }
-                    }
-                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
-                        v.parent.requestDisallowInterceptTouchEvent(false)
-                    }
-                }
-                true
-            }
-        }
-        calibrationCard.addView(joystickPad)
+        alignCard.addView(dpadLayout)
 
         val btnReset = Button(this).apply {
             text = "[ RESET ALIGNMENT (40, 40) ]"
@@ -423,62 +340,39 @@ class MainActivity : Activity() {
                 sendBroadcast(Intent(OverlayService.ACTION_UPDATE_POSITION))
             }
         }
-        calibrationCard.addView(btnReset)
+        alignCard.addView(btnReset)
+        rootLayout.addView(alignCard)
 
-        rootLayout.addView(calibrationCard)
+        val spacer4 = TextView(this).apply { text = "\n" }
+        rootLayout.addView(spacer4)
 
-        val spacer4_perm = TextView(this).apply { text = "\n" }
-        rootLayout.addView(spacer4_perm)
-
-        // --- Permission Button ---
+        // --- Action Buttons ---
         val btnPermission = Button(this).apply {
             text = "[ GRANT OVERLAY PERMISSION ]"
             setBackgroundColor(Color.parseColor("#121B2C"))
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
-            setPadding(0, 14, 0, 14)
             setOnClickListener { checkAndRequestOverlayPermission() }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
         }
         rootLayout.addView(btnPermission)
 
-        val spacer4_exec = TextView(this).apply { text = " " }
-        rootLayout.addView(spacer4_exec)
-
-        // --- Cyberware Action Buttons ---
         val btnStart = Button(this).apply {
-            text = "⚡ [ EXECUTE QUICKHACKS ]"
+            text = "⚡ [ START CYBERPUNK HUD ]"
             setBackgroundColor(Color.parseColor("#FFE600"))
             setTextColor(Color.BLACK)
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 16, 0, 16)
             setOnClickListener { startOverlayService() }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
         }
         rootLayout.addView(btnStart)
 
-        val spacer5 = TextView(this).apply { text = " " }
-        rootLayout.addView(spacer5)
-
         val btnStop = Button(this).apply {
-            text = "⏹️ [ TERMINATE OVERLAY ]"
+            text = "⏹️ [ STOP CYBERPUNK HUD ]"
             setBackgroundColor(Color.parseColor("#FF0055"))
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 14, 0, 14)
             setOnClickListener { stopOverlayService() }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
         }
         rootLayout.addView(btnStop)
 
@@ -492,136 +386,37 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun requestXrealUsbPermission() {
-        val device = usbDriver.findXrealDevice()
-        if (device != null) {
-            usbDriver.requestUsbPermission(device)
-            Toast.makeText(this, "XREAL Device Found! Prompting USB Permission...", Toast.LENGTH_LONG).show()
-        } else {
-            Toast.makeText(this, "No USB device found on port. Plug in XREAL glasses!", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun createAuthenticQuickhackSlot(
-        name: String,
-        tier: String,
-        statusTag: String,
-        ramCost: String,
-        iconText: String,
-        isHighlighted: Boolean
-    ): LinearLayout {
-        val borderColor = if (isHighlighted) Color.parseColor("#FFE600") else Color.parseColor("#00E5FF")
-        val darkBg = Color.parseColor("#09111E")
-
-        val cardContainer = LinearLayout(this).apply {
+    private fun createCompactCard(title: String, borderColorHex: String): LinearLayout {
+        val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 4, 0, 4) }
+            setPadding(16, 12, 16, 12)
             background = GradientDrawable().apply {
-                setColor(darkBg)
-                setStroke(2, borderColor)
+                setColor(Color.parseColor("#09111E"))
+                setStroke(1, Color.parseColor(borderColorHex))
                 cornerRadius = 2f
             }
         }
 
-        val topBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(16, 10, 16, 10)
-        }
-
-        val textStack = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        val titleView = TextView(this).apply {
-            text = name
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            typeface = Typeface.MONOSPACE
-            setTypeface(typeface, Typeface.BOLD)
-        }
-        textStack.addView(titleView)
-
-        val tierTagRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 2, 0, 0)
-        }
-
-        val tagBox = TextView(this).apply {
-            text = statusTag
-            textSize = 9f
-            setTextColor(Color.parseColor("#00E5FF"))
-            typeface = Typeface.MONOSPACE
-            background = GradientDrawable().apply {
-                setStroke(1, Color.parseColor("#00E5FF"))
-                cornerRadius = 1f
-            }
-            setPadding(6, 1, 6, 1)
-        }
-        tierTagRow.addView(tagBox)
-
-        val tierText = TextView(this).apply {
-            text = "  $tier"
-            textSize = 9f
-            setTextColor(Color.parseColor("#FFE600"))
-            typeface = Typeface.MONOSPACE
-        }
-        tierTagRow.addView(tierText)
-        textStack.addView(tierTagRow)
-
-        topBar.addView(textStack)
-
-        val ramBox = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(10, 4, 10, 4)
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#050A12"))
-                setStroke(1, Color.parseColor("#1B2A40"))
-            }
-        }
-
-        val ramText = TextView(this).apply {
-            text = ramCost
-            textSize = 16f
-            setTextColor(Color.WHITE)
-            typeface = Typeface.MONOSPACE
-            setTypeface(typeface, Typeface.BOLD)
-        }
-        ramBox.addView(ramText)
-
-        val ramIcon = TextView(this).apply {
-            text = " ▮"
+        val cardTitle = TextView(this).apply {
+            text = title
             textSize = 12f
-            setTextColor(Color.parseColor("#00E5FF"))
+            setTextColor(Color.parseColor(borderColorHex))
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, 0, 0, 6)
         }
-        ramBox.addView(ramIcon)
-        topBar.addView(ramBox)
+        container.addView(cardTitle)
+        return container
+    }
 
-        val iconView = TextView(this).apply {
-            text = iconText
-            textSize = 16f
-            setTextColor(Color.parseColor("#00E5FF"))
-            gravity = Gravity.CENTER
-            setPadding(10, 8, 10, 8)
-            background = GradientDrawable().apply {
-                setStroke(1, Color.parseColor("#00E5FF"))
-                cornerRadius = 1f
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(10, 0, 0, 0) }
+    private fun requestXrealUsbPermission() {
+        val device = usbDriver.findXrealDevice()
+        if (device != null) {
+            usbDriver.requestUsbPermission(device)
+            Toast.makeText(this, "XREAL Device Found! Requesting Permission...", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "No USB Device on port. Check glasses USB connection!", Toast.LENGTH_SHORT).show()
         }
-        topBar.addView(iconView)
-
-        cardContainer.addView(topBar)
-        return cardContainer
     }
 
     private fun checkAndRequestOverlayPermission() {
