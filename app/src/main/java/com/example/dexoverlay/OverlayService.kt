@@ -41,7 +41,6 @@ class OverlayService : Service() {
     private var cursorY = 540f
 
     private var usbImuDriver: XrealUsbImuDriver? = null
-    private var phoneImuDriver: PhoneImuDriver? = null
     private var udpImuReceiver: UdpImuReceiver? = null
     private var isNavActive = false
     private var isHudVisible = true
@@ -322,7 +321,7 @@ class OverlayService : Service() {
             }
         }
 
-        // 1. Direct XREAL 1s USB Host Driver with Magic Wakeup Packet
+        // 1. Direct XREAL Headset USB Hardware Driver (0xAA 0xC5 Handshake)
         usbImuDriver = XrealUsbImuDriver(this).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             onGlassesSingleTapListener = { onSingleTap() }
@@ -332,13 +331,7 @@ class OverlayService : Service() {
             usbImuDriver?.startReading(device)
         }
 
-        // 2. Android Phone Gyroscope Fallback Motion Sensor
-        phoneImuDriver = PhoneImuDriver(this).apply {
-            onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
-            startListening()
-        }
-
-        // 3. Ethernet / UDP Network Receiver (Port 9090)
+        // 2. Ethernet / UDP Network Receiver (Port 9090)
         udpImuReceiver = UdpImuReceiver(9090).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             onGlassesSingleTapListener = { onSingleTap() }
@@ -365,8 +358,8 @@ class OverlayService : Service() {
         }
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Cyberpunk HUD & Head Cursor Active")
-            .setContentText("Tri-Engine Motion Tracking Active")
+            .setContentTitle("Cyberpunk HUD & XREAL Headset Active")
+            .setContentText("XREAL 1s Glasses Hardware IMU Only")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
 
@@ -377,7 +370,6 @@ class OverlayService : Service() {
         super.onDestroy()
         handler.removeCallbacks(clockRunnable)
         usbImuDriver?.stopReading()
-        phoneImuDriver?.stopListening()
         udpImuReceiver?.stopListening()
         try {
             unregisterReceiver(batteryReceiver)

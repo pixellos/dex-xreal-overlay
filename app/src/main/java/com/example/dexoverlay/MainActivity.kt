@@ -63,7 +63,7 @@ class MainActivity : Activity() {
         headerCard.addView(headerText)
 
         val statusTag = TextView(this).apply {
-            text = "[ TRI-ENGINE ACTIVE ]"
+            text = "[ XREAL 1s GLASSES HARDWARE ]"
             textSize = 10f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -74,13 +74,13 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
-        // --- Card 1: Head Tracking Control & System Click Permission ---
+        // --- Card 1: Head Tracking Control (XREAL Headset Hardware Only) ---
         val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, true)
 
-        val connCard = createCompactCard("👓 HEAD TRACKING & SYSTEM CLICK DRIVER", "#00E5FF")
+        val connCard = createCompactCard("👓 XREAL 1s HEADSET HARDWARE CURSOR", "#00E5FF")
 
         val cbHeadCursor = CheckBox(this).apply {
-            text = " Enable Head Tracking Cursor"
+            text = " Enable XREAL Headset IMU Cursor"
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             textSize = 12f
@@ -88,7 +88,7 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { buttonView, isChecked ->
                 if (buttonView.isPressed) {
                     prefs.edit().putBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, isChecked).apply()
-                    Toast.makeText(this@MainActivity, "Head Cursor ${if (isChecked) "ON" else "OFF"}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "XREAL Headset Cursor ${if (isChecked) "ON" else "OFF"}", Toast.LENGTH_SHORT).show()
                     restartOverlayServiceIfRunning()
                 }
             }
@@ -96,7 +96,7 @@ class MainActivity : Activity() {
         connCard.addView(cbHeadCursor)
 
         val btnAccessibility = Button(this).apply {
-            text = "👆 ENABLE SYSTEM MOUSE CLICK ACCESSIBILITY"
+            text = "👆 ENABLE ACCESSIBILITY FOR SYSTEM CLICKS"
             setBackgroundColor(Color.parseColor("#0C182B"))
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -114,7 +114,7 @@ class MainActivity : Activity() {
         connCard.addView(btnAccessibility)
 
         val btnConnectUsb = Button(this).apply {
-            text = "⚡ WAKE UP XREAL 1s USB SENSORS"
+            text = "⚡ WAKE UP XREAL 1s HARDWARE IMU SENSORS"
             setBackgroundColor(Color.parseColor("#09111E"))
             setTextColor(Color.parseColor("#FFE600"))
             typeface = Typeface.MONOSPACE
@@ -383,7 +383,7 @@ class MainActivity : Activity() {
         rootLayout.addView(btnStart)
 
         val btnStop = Button(this).apply {
-            text = "⏹️ [ TERMINATE OVERLAY ]"
+            text = "⏹️ [ STOP CYBERPUNK HUD ]"
             setBackgroundColor(Color.parseColor("#FF0055"))
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
