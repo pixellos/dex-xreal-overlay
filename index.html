@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cyberpunk 2077 Minimal Time HUD</title>
+    <title>CYBERDECK v2.077 // Cyberpunk HUD Simulator</title>
     <style>
         * {
             box-sizing: border-box;
@@ -29,21 +29,23 @@
 
         header h1 {
             color: #FFE600;
-            font-size: 26px;
-            margin-bottom: 6px;
+            font-size: 24px;
+            margin-bottom: 4px;
             text-shadow: 0 0 14px rgba(255, 230, 0, 0.7);
             letter-spacing: 2px;
         }
 
         header p {
-            color: #8a94a0;
-            font-size: 13px;
+            color: #FF0055;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1px;
         }
 
         .main-container {
             display: flex;
             gap: 24px;
-            max-width: 1100px;
+            max-width: 1150px;
             width: 100%;
             flex-wrap: wrap;
             justify-content: center;
@@ -52,10 +54,10 @@
         /* XREAL Display Simulator Frame */
         .xreal-display {
             position: relative;
-            width: 800px;
-            height: 450px;
+            width: 760px;
+            height: 430px;
             background: #000;
-            border-radius: 16px;
+            border-radius: 14px;
             overflow: hidden;
             box-shadow: 0 0 35px rgba(255, 230, 0, 0.25);
             border: 2px solid #1a202c;
@@ -91,98 +93,165 @@
             user-select: none;
             transition: all 0.2s ease;
             background: transparent; /* 100% Transparent for XREAL Micro-OLED */
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
         .hud-clock {
             color: #FFE600; /* Cyberpunk Signature Yellow */
-            font-size: 26px;
+            font-size: 24px;
             font-weight: 900;
-            letter-spacing: 2.5px;
-            text-shadow: 0 0 14px rgba(255, 230, 0, 0.9), 0 0 2px #FFE600;
-            padding: 4px 8px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 14px rgba(255, 230, 0, 0.9);
         }
 
-        /* Controls Panel */
-        .controls-panel {
-            flex: 1;
-            min-width: 280px;
-            background: #0d121c;
-            padding: 24px;
-            border-radius: 16px;
-            border: 1px solid #1e293b;
-            height: fit-content;
-        }
-
-        .controls-panel h2 {
-            font-size: 18px;
-            color: #FFE600;
-            margin-bottom: 16px;
-            border-bottom: 1px solid #1e293b;
-            padding-bottom: 10px;
+        .hud-battery {
+            color: #00E5FF;
+            font-size: 12px;
+            font-weight: 700;
             letter-spacing: 1px;
         }
 
-        .control-group {
-            margin-bottom: 16px;
+        /* Cyberpunk Cyberdeck Controls Panel */
+        .cyberdeck-panel {
+            flex: 1;
+            min-width: 320px;
+            background: #080A0F;
+            padding: 22px;
+            border-radius: 12px;
+            border: 2px solid #00E5FF;
+            box-shadow: 0 0 25px rgba(0, 229, 255, 0.2);
+            height: fit-content;
         }
 
-        .control-group label {
-            display: block;
-            font-size: 13px;
-            color: #94a3b8;
+        .cyberdeck-panel h2 {
+            font-size: 16px;
+            color: #FFE600;
+            margin-bottom: 16px;
+            border-bottom: 1px solid #1a2332;
+            padding-bottom: 8px;
+            letter-spacing: 1px;
+        }
+
+        .quickhack-card {
+            background: #0f1420;
+            border: 1px solid #243247;
+            padding: 14px;
+            border-radius: 6px;
+            margin-bottom: 14px;
+        }
+
+        .quickhack-header {
+            display: flex;
+            justify-content: space-between;
             margin-bottom: 8px;
+        }
+
+        .quickhack-title {
+            font-size: 12px;
+            color: #ffffff;
             font-weight: 700;
+        }
+
+        .quickhack-tag {
+            font-size: 11px;
+            color: #00E5FF;
         }
 
         .select-input {
             width: 100%;
-            padding: 10px 14px;
-            border-radius: 6px;
+            padding: 8px 12px;
+            border-radius: 4px;
             background: #060910;
             color: #FFE600;
             border: 1px solid #243247;
             font-weight: 700;
+            margin-top: 6px;
+        }
+
+        .range-slider {
+            width: 100%;
+            accent-color: #FFE600;
+            margin-top: 8px;
+        }
+
+        .btn-start {
+            background: #FFE600;
+            color: #000;
+            border: none;
+            padding: 12px;
+            border-radius: 4px;
+            font-weight: 900;
+            cursor: pointer;
+            width: 100%;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .btn-stop {
+            background: #FF0055;
+            color: #fff;
+            border: none;
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
         }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>⚡ Cyberpunk 2077 Ultra-Minimal Time HUD</h1>
-        <p>Pure transparent background with glowing Cyberpunk Yellow time (No boxes, battery, or clutter)</p>
+        <h1>⚡ CYBERDECK v2.077 // XREAL 1s HUD</h1>
+        <p>AVAILABLE QUICKHACKS & OVERLAY CONFIGURATIONS</p>
     </header>
 
     <div class="main-container">
         <!-- XREAL Display Simulator -->
         <div class="xreal-display" id="xrealDisplay">
-            <div class="xreal-badge">XREAL 1s • CYBERPUNK 2077 HUD</div>
+            <div class="xreal-badge">XREAL 1s • CYBERDECK HUD</div>
             
             <video class="video-simulator" autoplay loop muted poster="https://images.unsplash.com/photo-1534447677768-be436bb09401?w=1200">
                 <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
             </video>
 
-            <!-- Pure Cyberpunk Time Overlay -->
+            <!-- Cyberpunk HUD Overlay -->
             <div class="cyberpunk-time-hud" id="hudWidget">
-                <div class="hud-clock" id="clock">17:30:47</div>
+                <div class="hud-clock" id="clock">17:37:38</div>
+                <div class="hud-battery" id="battery">▮▮▮▮▮ 88%</div>
             </div>
         </div>
 
-        <!-- Controls Panel -->
-        <div class="controls-panel">
-            <h2>📍 HUD Controls</h2>
+        <!-- Cyberdeck Phone Menu Panel -->
+        <div class="cyberdeck-panel">
+            <h2>CYBERDECK CONFIGURATOR</h2>
 
-            <div class="control-group">
-                <label>Corner Position:</label>
+            <!-- Quickhack #1: Scale -->
+            <div class="quickhack-card">
+                <div class="quickhack-header">
+                    <div class="quickhack-title">QUICKHACK #1: SYSTEM HUD SCALE</div>
+                    <div class="quickhack-tag">[READY]</div>
+                </div>
+                <label style="font-size:12px; color:#94a3b8;">HUD Size Scale: <span id="scaleVal" style="color:#FFE600; font-weight:bold;">1.00x</span></label>
+                <input type="range" class="range-slider" min="75" max="150" value="100" oninput="updateScale(this.value)">
+            </div>
+
+            <!-- Quickhack #2: Position -->
+            <div class="quickhack-card">
+                <div class="quickhack-header">
+                    <div class="quickhack-title">QUICKHACK #2: CORNER POSITION</div>
+                    <div class="quickhack-tag">[TRACEABLE]</div>
+                </div>
                 <select class="select-input" onchange="setCornerPosition(this.value)">
-                    <option value="right">Top-Right Corner</option>
-                    <option value="left">Top-Left Corner</option>
+                    <option value="right">[ TOP-RIGHT CORNER ]</option>
+                    <option value="left">[ TOP-LEFT CORNER ]</option>
                 </select>
             </div>
 
-            <div style="background:#060910; padding:12px; border-radius:8px; font-size:12px; color:#94a3b8; margin-top:20px; line-height:1.5;">
-                <span style="color:#FFE600; font-weight:bold;">Micro-OLED Note:</span><br>
-                Because the background is 100% transparent (`#00000000`), looking through XREAL lenses renders zero box borders—only the pure glowing Cyberpunk yellow numbers float in your vision.
-            </div>
+            <button class="btn-start">⚡ [ EXECUTE: START CYBERPUNK HUD ]</button>
+            <button class="btn-stop">⏹️ [ TERMINATE: STOP HUD ]</button>
         </div>
     </div>
 
@@ -195,13 +264,26 @@
         setInterval(updateClock, 1000);
         updateClock();
 
+        let currentScale = 1.0;
+
+        function updateScale(val) {
+            currentScale = val / 100;
+            document.getElementById('scaleVal').innerText = currentScale.toFixed(2) + 'x';
+            
+            const clock = document.getElementById('clock');
+            const battery = document.getElementById('battery');
+
+            clock.style.fontSize = (24 * currentScale) + 'px';
+            battery.style.fontSize = (12 * currentScale) + 'px';
+        }
+
         function setCornerPosition(pos) {
             const hud = document.getElementById('hudWidget');
             if (pos === 'left') {
-                hud.style.left = '35px';
+                hud.style.left = (35 * currentScale) + 'px';
                 hud.style.right = 'auto';
             } else {
-                hud.style.right = '35px';
+                hud.style.right = (35 * currentScale) + 'px';
                 hud.style.left = 'auto';
             }
         }

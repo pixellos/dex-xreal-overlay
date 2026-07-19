@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -13,6 +15,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 
@@ -26,55 +29,101 @@ class MainActivity : Activity() {
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(48, 48, 48, 48)
-            setBackgroundColor(Color.parseColor("#06080E"))
+            setPadding(36, 36, 36, 36)
+            setBackgroundColor(Color.parseColor("#080A0F")) // Cyberpunk Cyberdeck Dark
         }
 
-        // --- Header ---
-        val titleText = TextView(this).apply {
-            text = "⚡ Cyberpunk 2077 Minimal HUD"
-            textSize = 24f
-            setTextColor(Color.parseColor("#FFE600"))
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(0, 0, 0, 4)
-            gravity = Gravity.CENTER
+        // --- Cyberdeck Header ---
+        val headerCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 16, 20, 16)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#121824"))
+                setStroke(2, Color.parseColor("#00E5FF"))
+                cornerRadius = 4f
+            }
         }
-        rootLayout.addView(titleText)
 
         val subtitleText = TextView(this).apply {
-            text = "Ultra-Minimal Time Overlay for XREAL 1s & Samsung DeX"
-            textSize = 13f
-            setTextColor(Color.LTGRAY)
-            setPadding(0, 0, 0, 36)
-            gravity = Gravity.CENTER
+            text = "⚡ CYBERDECK v2.077 // AVAILABLE CONFIGS:"
+            textSize = 12f
+            setTextColor(Color.parseColor("#FF0055")) // Neon Pink
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
         }
-        rootLayout.addView(subtitleText)
+        headerCard.addView(subtitleText)
 
-        // --- Position Selector ---
-        val posLabel = TextView(this).apply {
-            text = "📍 HUD Position:"
-            textSize = 16f
-            setTextColor(Color.WHITE)
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(0, 0, 0, 8)
+        val titleText = TextView(this).apply {
+            text = "XREAL 1s & DeX Minimal HUD"
+            textSize = 22f
+            setTextColor(Color.parseColor("#FFE600")) // Cyberpunk Yellow
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, 4, 0, 0)
         }
-        rootLayout.addView(posLabel)
+        headerCard.addView(titleText)
+        rootLayout.addView(headerCard)
 
+        val spacer1 = TextView(this).apply { text = "\n" }
+        rootLayout.addView(spacer1)
+
+        // --- Quickhack Card 1: HUD Scale Setting ---
+        val currentScale = prefs.getFloat(OverlayService.KEY_SCALE, 1.0f)
+        val scaleCard = createQuickhackCard("QUICKHACK #1: SYSTEM HUD SCALE", "READY")
+
+        val scaleLabel = TextView(this).apply {
+            text = "HUD Size Scale: ${String.format("%.2f", currentScale)}x"
+            textSize = 14f
+            setTextColor(Color.parseColor("#00E5FF"))
+            typeface = Typeface.MONOSPACE
+            setPadding(0, 8, 0, 8)
+        }
+        scaleCard.addView(scaleLabel)
+
+        val seekBar = SeekBar(this).apply {
+            max = 75 // 0 to 75 mapped to 0.75x -> 1.50x
+            progress = ((currentScale - 0.75f) * 100).toInt()
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    val newScale = 0.75f + (progress / 100f)
+                    scaleLabel.text = "HUD Size Scale: ${String.format("%.2f", newScale)}x"
+                }
+
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                    val progress = seekBar?.progress ?: 25
+                    val finalScale = 0.75f + (progress / 100f)
+                    prefs.edit().putFloat(OverlayService.KEY_SCALE, finalScale).apply()
+                    Toast.makeText(this@MainActivity, "Scale set to ${String.format("%.2f", finalScale)}x", Toast.LENGTH_SHORT).show()
+                    restartOverlayServiceIfRunning()
+                }
+            })
+        }
+        scaleCard.addView(seekBar)
+        rootLayout.addView(scaleCard)
+
+        val spacer2 = TextView(this).apply { text = "\n" }
+        rootLayout.addView(spacer2)
+
+        // --- Quickhack Card 2: Corner Position ---
         val currentPos = prefs.getString(OverlayService.KEY_POSITION, OverlayService.POS_TOP_RIGHT)
+        val posCard = createQuickhackCard("QUICKHACK #2: DISPLAY CORNER POSITION", "TRACEABLE")
 
         val posGroup = RadioGroup(this).apply {
             orientation = RadioGroup.HORIZONTAL
-            setPadding(0, 0, 0, 32)
+            setPadding(0, 8, 0, 8)
         }
 
         val rbTopRight = RadioButton(this).apply {
-            text = "Top-Right Corner"
+            text = "[ TOP-RIGHT ]"
             setTextColor(Color.parseColor("#FFE600"))
+            typeface = Typeface.MONOSPACE
             isChecked = currentPos == OverlayService.POS_TOP_RIGHT
         }
         val rbTopLeft = RadioButton(this).apply {
-            text = "Top-Left Corner"
+            text = "[ TOP-LEFT ]"
             setTextColor(Color.parseColor("#FFE600"))
+            typeface = Typeface.MONOSPACE
             isChecked = currentPos == OverlayService.POS_TOP_LEFT
         }
 
@@ -87,34 +136,45 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Position set to $selectedPos", Toast.LENGTH_SHORT).show()
             restartOverlayServiceIfRunning()
         }
-        rootLayout.addView(posGroup)
+        posCard.addView(posGroup)
+        rootLayout.addView(posCard)
+
+        val spacer3 = TextView(this).apply { text = "\n" }
+        rootLayout.addView(spacer3)
 
         // --- Permission Button ---
         val btnPermission = Button(this).apply {
-            text = "Grant 'Display Over Other Apps' Permission"
-            setBackgroundColor(Color.parseColor("#222222"))
+            text = "[ GRANT OVERLAY PERMISSION ]"
+            setBackgroundColor(Color.parseColor("#151D2A"))
             setTextColor(Color.WHITE)
+            typeface = Typeface.MONOSPACE
             setOnClickListener { checkAndRequestOverlayPermission() }
         }
         rootLayout.addView(btnPermission)
 
-        val spacer = TextView(this).apply { text = "\n" }
-        rootLayout.addView(spacer)
+        val spacer4 = TextView(this).apply { text = "\n" }
+        rootLayout.addView(spacer4)
 
-        // --- Start/Stop Buttons ---
+        // --- Cyberware Action Buttons ---
         val btnStart = Button(this).apply {
-            text = "🚀 START CYBERPUNK HUD"
+            text = "⚡ [ EXECUTE: START CYBERPUNK HUD ]"
             setBackgroundColor(Color.parseColor("#FFE600"))
             setTextColor(Color.BLACK)
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
             setOnClickListener { startOverlayService() }
         }
         rootLayout.addView(btnStart)
 
+        val spacer5 = TextView(this).apply { text = " " }
+        rootLayout.addView(spacer5)
+
         val btnStop = Button(this).apply {
-            text = "⏹️ STOP HUD"
+            text = "⏹️ [ TERMINATE: STOP HUD ]"
             setBackgroundColor(Color.parseColor("#FF0055"))
             setTextColor(Color.WHITE)
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
             setOnClickListener { stopOverlayService() }
         }
         rootLayout.addView(btnStop)
@@ -123,6 +183,43 @@ class MainActivity : Activity() {
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
             startOverlayService()
+        }
+    }
+
+    private fun createQuickhackCard(title: String, tag: String): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(16, 12, 16, 12)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#0F1420"))
+                setStroke(2, Color.parseColor("#243247"))
+                cornerRadius = 4f
+            }
+
+            val headerRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+
+            val titleView = TextView(context).apply {
+                text = title
+                textSize = 13f
+                setTextColor(Color.WHITE)
+                typeface = Typeface.MONOSPACE
+                setTypeface(typeface, Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            headerRow.addView(titleView)
+
+            val tagView = TextView(context).apply {
+                text = "[$tag]"
+                textSize = 11f
+                setTextColor(Color.parseColor("#00E5FF"))
+                typeface = Typeface.MONOSPACE
+            }
+            headerRow.addView(tagView)
+
+            addView(headerRow)
         }
     }
 
