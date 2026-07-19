@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeX & XREAL Overlay PoC Simulator</title>
+    <!-- Leaflet OpenStreetMap for interactive map demo without requiring API keys -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #0d0f12;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        header h1 {
+            color: #00E5FF;
+            font-size: 26px;
+            margin-bottom: 6px;
+        }
+
+        header p {
+            color: #a0aab0;
+            font-size: 14px;
+        }
+
+        .main-container {
+            display: flex;
+            gap: 24px;
+            max-width: 1200px;
+            width: 100%;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* XREAL Glasses Field of View Display Simulator */
+        .xreal-display {
+            position: relative;
+            width: 800px;
+            height: 450px;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(0, 229, 255, 0.2);
+            border: 2px solid #1e293b;
+        }
+
+        .xreal-badge {
+            position: absolute;
+            top: 12px;
+            left: 16px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #00E5FF;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            z-index: 10;
+            border: 1px solid rgba(0, 229, 255, 0.3);
+        }
+
+        /* Video Background Simulator */
+        .video-simulator {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Floating Overlay Widget */
+        .floating-overlay {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(8px);
+            border-radius: 14px;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            cursor: move;
+            z-index: 100;
+            transition: opacity 0.2s ease, background 0.3s ease;
+            user-select: none;
+        }
+
+        .overlay-clock {
+            font-size: 20px;
+            font-weight: 700;
+            color: #00E5FF;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            letter-spacing: 0.5px;
+        }
+
+        .map-container {
+            width: 280px;
+            height: 180px;
+            border-radius: 8px;
+            overflow: hidden;
+            opacity: 0.75;
+            transition: opacity 0.2s ease;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Control Panel */
+        .controls-panel {
+            flex: 1;
+            min-width: 300px;
+            background: #161b22;
+            padding: 20px;
+            border-radius: 16px;
+            border: 1px solid #30363d;
+            height: fit-content;
+        }
+
+        .controls-panel h2 {
+            font-size: 18px;
+            color: #ffffff;
+            margin-bottom: 16px;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 10px;
+        }
+
+        .control-group {
+            margin-bottom: 18px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 13px;
+            color: #8b949e;
+            margin-bottom: 6px;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            accent-color: #00E5FF;
+        }
+
+        .btn {
+            background: #238636;
+            color: #fff;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+            transition: 0.2s;
+        }
+
+        .btn:hover {
+            background: #2ea043;
+        }
+
+        .btn-toggle {
+            background: #1f6feb;
+        }
+
+        .btn-toggle:hover {
+            background: #388bfd;
+        }
+
+        .info-box {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #8b949e;
+            line-height: 1.5;
+            margin-top: 16px;
+        }
+
+        .info-box span {
+            color: #00E5FF;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>👓 Samsung DeX & XREAL 1s Overlay PoC Simulator</h1>
+        <p>Interactive local prototype: Floating clock + Semi-transparent Google Maps over full-screen video</p>
+    </header>
+
+    <div class="main-container">
+        <!-- XREAL Display Simulator -->
+        <div class="xreal-display" id="xrealDisplay">
+            <div class="xreal-badge">XREAL 1s (DeX 1080p FOV)</div>
+            
+            <!-- Video Playing in DeX -->
+            <video class="video-simulator" autoplay loop muted poster="https://images.unsplash.com/photo-1534447677768-be436bb09401?w=1200">
+                <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
+            </video>
+
+            <!-- Floating Overlay Widget -->
+            <div class="floating-overlay" id="overlayWidget">
+                <div class="overlay-clock" id="clock">🕒 00:00:00</div>
+                <div class="map-container" id="mapContainer">
+                    <div id="map"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Local Controls Panel -->
+        <div class="controls-panel">
+            <h2>🎛️ PoC Controls</h2>
+
+            <button class="btn btn-toggle" onclick="toggleOverlay()">👁️ Toggle Overlay Visibility</button>
+            <button class="btn" onclick="resetPosition()">📍 Reset Corner Position</button>
+
+            <div class="control-group">
+                <label for="opacitySlider">Map Opacity (Semi-Transparency): <span id="opacityVal">75%</span></label>
+                <input type="range" id="opacitySlider" min="10" max="100" value="75" oninput="updateOpacity(this.value)">
+            </div>
+
+            <div class="control-group">
+                <label for="bgStyle">Overlay Background Shader:</label>
+                <select id="bgStyle" onchange="updateBgStyle(this.value)" style="width:100%; padding:8px; border-radius:6px; background:#0d1117; color:#fff; border:1px solid #30363d;">
+                    <option value="glass">Semi-Transparent Glass (#99000000)</option>
+                    <option value="oled">XREAL True-Black OLED (#00000000)</option>
+                    <option value="dark">Dark Solid (#E6000000)</option>
+                </select>
+            </div>
+
+            <div class="info-box">
+                <span>Direct Local Preview Note:</span><br>
+                Drag the floating clock/map widget around the XREAL display frame above to test positioning. In XREAL glasses, True-Black OLED mode renders background as completely transparent!
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Live Clock Loop
+        function updateClock() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString();
+            document.getElementById('clock').innerHTML = `🕒 ${timeStr}`;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Initialize Map
+        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([37.7749, -122.4194], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+        // Control handlers
+        function toggleOverlay() {
+            const widget = document.getElementById('overlayWidget');
+            widget.style.display = widget.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function updateOpacity(val) {
+            document.getElementById('opacityVal').innerText = val + '%';
+            document.getElementById('mapContainer').style.opacity = val / 100;
+        }
+
+        function updateBgStyle(style) {
+            const widget = document.getElementById('overlayWidget');
+            if (style === 'glass') {
+                widget.style.background = 'rgba(0, 0, 0, 0.65)';
+            } else if (style === 'oled') {
+                widget.style.background = 'transparent';
+                widget.style.border = 'none';
+            } else if (style === 'dark') {
+                widget.style.background = 'rgba(0, 0, 0, 0.95)';
+            }
+        }
+
+        function resetPosition() {
+            const widget = document.getElementById('overlayWidget');
+            widget.style.top = '30px';
+            widget.style.right = '30px';
+            widget.style.left = 'auto';
+        }
+
+        // Draggable Widget Logic for Demo
+        const widget = document.getElementById('overlayWidget');
+        let isDragging = false, offset = [0, 0];
+
+        widget.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            offset = [widget.offsetLeft - e.clientX, widget.offsetTop - e.clientY];
+        });
+
+        document.addEventListener('mouseup', () => isDragging = false);
+
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                widget.style.left = (e.clientX + offset[0]) + 'px';
+                widget.style.top = (e.clientY + offset[1]) + 'px';
+                widget.style.right = 'auto';
+            }
+        });
+    </script>
+</body>
+</html>
