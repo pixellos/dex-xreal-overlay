@@ -40,6 +40,7 @@ class OverlayService : Service() {
     private var cursorX = 960f
     private var cursorY = 540f
 
+    private var usbImuDriver: XrealUsbImuDriver? = null
     private var udpImuReceiver: UdpImuReceiver? = null
     private var isNavActive = false
     private var isHudVisible = true
@@ -320,8 +321,17 @@ class OverlayService : Service() {
             }
         }
 
-        // Ethernet / UDP Network Socket Receiver (Port 9090)
-        // High-Speed IMU stream matching dripster82/ar_workspace_manager_for_xreal socket architecture
+        // 1. Direct XREAL 1s USB Driver with Magic MCU Initialization
+        usbImuDriver = XrealUsbImuDriver(this).apply {
+            onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
+            onGlassesSingleTapListener = { onSingleTap() }
+        }
+        val device = usbImuDriver?.findXrealDevice()
+        if (device != null && usbImuDriver?.hasUsbPermission(device) == true) {
+            usbImuDriver?.startReading(device)
+        }
+
+        // 2. Ethernet / UDP Network Socket Receiver (Port 9090)
         udpImuReceiver = UdpImuReceiver(9090).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             onGlassesSingleTapListener = { onSingleTap() }
@@ -348,8 +358,8 @@ class OverlayService : Service() {
         }
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Cyberpunk HUD & XREAL Socket Active")
-            .setContentText("UDP Port 9090 Socket Engine Listening")
+            .setContentTitle("Cyberpunk HUD & XREAL Active")
+            .setContentText("XREAL 1s Hardware IMU & Socket Active")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
 
@@ -359,6 +369,7 @@ class OverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacks(clockRunnable)
+        usbImuDriver?.stopReading()
         udpImuReceiver?.stopListening()
         try {
             unregisterReceiver(batteryReceiver)

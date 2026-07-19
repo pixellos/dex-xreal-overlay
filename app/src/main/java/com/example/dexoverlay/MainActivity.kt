@@ -9,6 +9,8 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -23,8 +25,22 @@ import android.widget.Toast
 
 class MainActivity : Activity() {
 
+    private lateinit var usbDriver: XrealUsbImuDriver
+    private var debugTextView: TextView? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        usbDriver = XrealUsbImuDriver(this)
+        usbDriver.onDebugLogListener = { msg ->
+            mainHandler.post {
+                val currentText = debugTextView?.text?.toString() ?: ""
+                val lines = currentText.split("\n").takeLast(6).toMutableList()
+                lines.add("> $msg")
+                debugTextView?.text = lines.joinToString("\n")
+            }
+        }
 
         stopOverlayService()
 
@@ -60,7 +76,7 @@ class MainActivity : Activity() {
         headerCard.addView(headerText)
 
         val statusTag = TextView(this).apply {
-            text = "[ UDP PORT 9090 SOCKET ]"
+            text = "[ XREAL 1s HARDWARE ]"
             textSize = 10f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -71,13 +87,13 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
-        // --- Card 1: XREAL Network Socket & System Click Driver ---
+        // --- Card 1: XREAL Hardware Control & System Click Driver ---
         val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, true)
 
-        val connCard = createCompactCard("🌐 XREAL SOCKET RECEIVER (PORT 9090)", "#00E5FF")
+        val connCard = createCompactCard("👓 XREAL 1s HARDWARE INITIALIZER", "#00E5FF")
 
         val cbHeadCursor = CheckBox(this).apply {
-            text = " Enable XREAL Socket Head Cursor"
+            text = " Enable XREAL Hardware Head Cursor"
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             textSize = 12f
@@ -109,6 +125,33 @@ class MainActivity : Activity() {
             }
         }
         connCard.addView(btnAccessibility)
+
+        val btnInitHardware = Button(this).apply {
+            text = "⚡ [ INITIALIZE XREAL 1s HARDWARE IMU ]"
+            setBackgroundColor(Color.parseColor("#09111E"))
+            setTextColor(Color.parseColor("#FFE600"))
+            typeface = Typeface.MONOSPACE
+            textSize = 10f
+            setOnClickListener {
+                requestXrealUsbPermission()
+            }
+        }
+        connCard.addView(btnInitHardware)
+
+        // Live Diagnostic Terminal Log Card
+        debugTextView = TextView(this).apply {
+            text = "> XREAL 1s Hardware Terminal Ready.\n> Connect XREAL 1s glasses and tap Initialize."
+            textSize = 9f
+            setTextColor(Color.parseColor("#00FF66"))
+            typeface = Typeface.MONOSPACE
+            setPadding(12, 10, 12, 10)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#050B14"))
+                setStroke(1, Color.parseColor("#00FF66"))
+                cornerRadius = 2f
+            }
+        }
+        connCard.addView(debugTextView)
         rootLayout.addView(connCard)
 
         val spacer_mode = TextView(this).apply { text = " " }
@@ -404,6 +447,16 @@ class MainActivity : Activity() {
         }
         container.addView(cardTitle)
         return container
+    }
+
+    private fun requestXrealUsbPermission() {
+        val device = usbDriver.findXrealDevice()
+        if (device != null) {
+            usbDriver.requestUsbPermission(device)
+            Toast.makeText(this, "XREAL Device Found! Initializing...", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "No USB Device found. Plug in XREAL 1s glasses!", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun checkAndRequestOverlayPermission() {
