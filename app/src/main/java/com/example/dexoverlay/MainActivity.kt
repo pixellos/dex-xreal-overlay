@@ -33,25 +33,25 @@ class MainActivity : Activity() {
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(32, 32, 32, 32)
-            setBackgroundColor(Color.parseColor("#04070D")) // In-Game Netrunner Dark
+            setPadding(24, 24, 24, 24)
+            setBackgroundColor(Color.parseColor("#03060B")) // Authentic Cyberpunk Netrunner Pitch Dark
         }
 
-        // --- Cyberdeck Top Bar (Cyberpunk 2077 In-Game Header) ---
+        // --- Cyberdeck Top Banner (Exact Cyberpunk 2077 In-Game Header) ---
         val headerCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(16, 12, 16, 12)
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#09111E"))
-                setStroke(2, Color.parseColor("#00E5FF"))
+                setStroke(2, Color.parseColor("#FF0055")) // Red Cyberdeck Outline
                 cornerRadius = 2f
             }
         }
 
         val subtitleText = TextView(this).apply {
             text = "CYBERDECK v 552.322"
-            textSize = 11f
-            setTextColor(Color.parseColor("#FF0055")) // Cyberpunk Red Accent
+            textSize = 12f
+            setTextColor(Color.parseColor("#FF0055")) // Authentic Cyberpunk Red
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
         }
@@ -71,13 +71,15 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = "\n" }
         rootLayout.addView(spacer1)
 
-        // --- Quickhack 1: SYSTEM COLLAPSE (HUD Scale) ---
+        // --- Quickhack 1: SYSTEM COLLAPSE (HUD Scale 0.25x - 1.50x) ---
         val currentScale = prefs.getFloat(OverlayService.KEY_SCALE, 1.0f)
-        val scaleCard = createInGameQuickhackBar(
-            title = "SYSTEM COLLAPSE",
+        val scaleCard = createAuthenticQuickhackSlot(
+            name = "SYSTEM COLLAPSE",
+            tier = "ICONIC // TIER 5",
             statusTag = "READY",
             ramCost = "28",
-            iconText = "🗲"
+            iconText = "🗲",
+            isHighlighted = true
         )
 
         val scaleLabel = TextView(this).apply {
@@ -92,7 +94,7 @@ class MainActivity : Activity() {
         val seekBar = SeekBar(this).apply {
             max = 125 // 0.25 to 1.50 (1.25 range)
             progress = ((currentScale - 0.25f) * 100).toInt()
-            setPadding(20, 0, 20, 12)
+            setPadding(20, 0, 20, 14)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     val newScale = 0.25f + (progress / 100f)
@@ -116,16 +118,18 @@ class MainActivity : Activity() {
 
         // --- Quickhack 2: OVERHEAT (Corner Position) ---
         val currentPos = prefs.getString(OverlayService.KEY_POSITION, OverlayService.POS_TOP_RIGHT)
-        val posCard = createInGameQuickhackBar(
-            title = "OVERHEAT",
+        val posCard = createAuthenticQuickhackSlot(
+            name = "OVERHEAT",
+            tier = "ICONIC // TIER 5",
             statusTag = "READY | TRACEABLE",
             ramCost = "9",
-            iconText = "🎯"
+            iconText = "🎯",
+            isHighlighted = false
         )
 
         val posGroup = RadioGroup(this).apply {
             orientation = RadioGroup.HORIZONTAL
-            setPadding(20, 8, 20, 12)
+            setPadding(20, 8, 20, 14)
         }
 
         val rbTopRight = RadioButton(this).apply {
@@ -158,11 +162,13 @@ class MainActivity : Activity() {
         // --- Quickhack 3: CRIPPLE MOVEMENT (HUD Alignment Calibrator) ---
         val xOff = prefs.getInt(OverlayService.KEY_X_OFFSET, 40)
         val yOff = prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)
-        val calibrationCard = createInGameQuickhackBar(
-            title = "CRIPPLE MOVEMENT",
+        val calibrationCard = createAuthenticQuickhackSlot(
+            name = "CRIPPLE MOVEMENT",
+            tier = "ICONIC // TIER 5",
             statusTag = "READY | TRACEABLE",
             ramCost = "6",
-            iconText = "📍"
+            iconText = "📍",
+            isHighlighted = false
         )
 
         val offsetLabel = TextView(this).apply {
@@ -378,14 +384,16 @@ class MainActivity : Activity() {
         }
     }
 
-    // Creates authentic Cyberpunk 2077 In-Game Quickhack Action Bar
-    private fun createInGameQuickhackBar(
-        title: String,
+    // Creates authentic Cyberpunk 2077 In-Game Quickhack Slot Card
+    private fun createAuthenticQuickhackSlot(
+        name: String,
+        tier: String,
         statusTag: String,
         ramCost: String,
-        iconText: String
+        iconText: String,
+        isHighlighted: Boolean
     ): LinearLayout {
-        val cyan = Color.parseColor("#00E5FF")
+        val borderColor = if (isHighlighted) Color.parseColor("#FFE600") else Color.parseColor("#00E5FF")
         val darkBg = Color.parseColor("#09111E")
 
         val cardContainer = LinearLayout(this).apply {
@@ -396,26 +404,25 @@ class MainActivity : Activity() {
             ).apply { setMargins(0, 4, 0, 4) }
             background = GradientDrawable().apply {
                 setColor(darkBg)
-                setStroke(2, cyan) // Cyberpunk Cyan Border
+                setStroke(2, borderColor)
                 cornerRadius = 2f
             }
         }
 
-        // Main Horizontal Quickhack Bar
+        // Top Header Row of Slot
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(16, 12, 16, 12)
+            setPadding(16, 10, 16, 10)
         }
 
-        // Left Text Stack
         val textStack = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         val titleView = TextView(this).apply {
-            text = title
+            text = name
             textSize = 14f
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
@@ -423,29 +430,41 @@ class MainActivity : Activity() {
         }
         textStack.addView(titleView)
 
+        val tierTagRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 2, 0, 0)
+        }
+
         val tagBox = TextView(this).apply {
             text = statusTag
             textSize = 9f
-            setTextColor(cyan)
+            setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
             background = GradientDrawable().apply {
-                setStroke(1, cyan)
+                setStroke(1, Color.parseColor("#00E5FF"))
                 cornerRadius = 1f
             }
             setPadding(6, 1, 6, 1)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 4, 0, 0) }
         }
-        textStack.addView(tagBox)
+        tierTagRow.addView(tagBox)
+
+        val tierText = TextView(this).apply {
+            text = "  $tier"
+            textSize = 9f
+            setTextColor(Color.parseColor("#FFE600"))
+            typeface = Typeface.MONOSPACE
+        }
+        tierTagRow.addView(tierText)
+        textStack.addView(tierTagRow)
+
         topBar.addView(textStack)
 
-        // RAM Cost Box (Cyberpunk 2077 In-Game RAM Badge)
+        // RAM Badge (Authentic In-Game Box)
         val ramBox = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(12, 4, 12, 4)
+            setPadding(10, 4, 10, 4)
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#050A12"))
                 setStroke(1, Color.parseColor("#1B2A40"))
@@ -464,20 +483,20 @@ class MainActivity : Activity() {
         val ramIcon = TextView(this).apply {
             text = " ▮"
             textSize = 12f
-            setTextColor(cyan)
+            setTextColor(Color.parseColor("#00E5FF"))
         }
         ramBox.addView(ramIcon)
         topBar.addView(ramBox)
 
-        // Far Right Cyberware Icon Box
+        // Icon Box
         val iconView = TextView(this).apply {
             text = iconText
             textSize = 16f
-            setTextColor(cyan)
+            setTextColor(Color.parseColor("#00E5FF"))
             gravity = Gravity.CENTER
-            setPadding(12, 10, 12, 10)
+            setPadding(10, 8, 10, 8)
             background = GradientDrawable().apply {
-                setStroke(1, cyan)
+                setStroke(1, Color.parseColor("#00E5FF"))
                 cornerRadius = 1f
             }
             layoutParams = LinearLayout.LayoutParams(
