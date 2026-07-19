@@ -40,12 +40,13 @@ class MainActivity : Activity() {
         // --- Cyberdeck Top Banner (Exact Cyberpunk 2077 In-Game Header) ---
         val headerCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(16, 12, 16, 12)
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#09111E"))
-                setStroke(2, Color.parseColor("#FF0055")) // Red Cyberdeck Outline
-                cornerRadius = 2f
-            }
+            setPadding(24, 20, 24, 20)
+            background = CyberpunkNotchedDrawable(
+                backgroundColor = Color.parseColor("#09111E"),
+                borderColor = Color.parseColor("#FF0055"),
+                glowColor = Color.parseColor("#FF0055"),
+                isMainSlot = true
+            )
         }
 
         val subtitleText = TextView(this).apply {
@@ -319,60 +320,71 @@ class MainActivity : Activity() {
 
         rootLayout.addView(calibrationCard)
 
-        val spacer4_perm = TextView(this).apply { text = "\n" }
-        rootLayout.addView(spacer4_perm)
-
-        // --- Permission Button ---
+        // --- Cyberware Action Buttons (Authentic Style) ---
         val btnPermission = Button(this).apply {
-            text = "[ GRANT OVERLAY PERMISSION ]"
-            setBackgroundColor(Color.parseColor("#121B2C"))
+            text = "[ GRANT PRIVILEGES ]"
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
-            setPadding(0, 14, 0, 14)
+            setTypeface(typeface, Typeface.BOLD)
+            background = CyberpunkNotchedDrawable(
+                backgroundColor = Color.parseColor("#121B2C"),
+                borderColor = Color.parseColor("#00E5FF"),
+                isMainSlot = false,
+                notchSize = 12f
+            )
+            setPadding(0, 20, 0, 20)
             setOnClickListener { checkAndRequestOverlayPermission() }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            )
+            ).apply { setMargins(0, 16, 0, 8) }
         }
         rootLayout.addView(btnPermission)
 
-        val spacer4_exec = TextView(this).apply { text = " " }
-        rootLayout.addView(spacer4_exec)
-
-        // --- Cyberware Action Buttons ---
         val btnStart = Button(this).apply {
             text = "⚡ [ EXECUTE QUICKHACKS ]"
-            setBackgroundColor(Color.parseColor("#FFE600"))
             setTextColor(Color.BLACK)
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 16, 0, 16)
+            background = CyberpunkNotchedDrawable(
+                backgroundColor = Color.parseColor("#FFE600"),
+                borderColor = Color.parseColor("#FFE600"),
+                glowColor = Color.parseColor("#88FFE600"),
+                isMainSlot = false,
+                notchSize = 12f
+            )
+            setPadding(0, 24, 0, 24)
             setOnClickListener { startOverlayService() }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            )
+            ).apply { setMargins(0, 8, 0, 8) }
         }
         rootLayout.addView(btnStart)
 
-        val spacer5 = TextView(this).apply { text = " " }
-        rootLayout.addView(spacer5)
-
         val btnStop = Button(this).apply {
-            text = "⏹️ [ TERMINATE OVERLAY ]"
-            setBackgroundColor(Color.parseColor("#FF0055"))
+            text = "⏹️ [ TERMINATE HUD ]"
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 14, 0, 14)
+            background = CyberpunkNotchedDrawable(
+                backgroundColor = Color.parseColor("#FF0055"),
+                borderColor = Color.parseColor("#FF0055"),
+                glowColor = Color.parseColor("#88FF0055"),
+                isMainSlot = false,
+                notchSize = 12f
+            )
+            setPadding(0, 20, 0, 20)
             setOnClickListener { stopOverlayService() }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            )
+            ).apply { setMargins(0, 8, 0, 32) }
         }
         rootLayout.addView(btnStop)
+
+        // Disable hardware acceleration for the root layout to allow BlurMaskFilter (Neon Glow)
+        // rootLayout.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
 
         val scrollView = android.widget.ScrollView(this).apply {
             addView(rootLayout)
@@ -393,7 +405,9 @@ class MainActivity : Activity() {
         iconText: String,
         isHighlighted: Boolean
     ): LinearLayout {
-        val borderColor = if (isHighlighted) Color.parseColor("#FFE600") else Color.parseColor("#00E5FF")
+        val cyan = Color.parseColor("#00E5FF")
+        val yellow = Color.parseColor("#FFE600")
+        val borderColor = if (isHighlighted) yellow else cyan
         val darkBg = Color.parseColor("#09111E")
 
         val cardContainer = LinearLayout(this).apply {
@@ -401,113 +415,183 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 4, 0, 4) }
-            background = GradientDrawable().apply {
-                setColor(darkBg)
-                setStroke(2, borderColor)
-                cornerRadius = 2f
-            }
+            ).apply { setMargins(0, 8, 0, 8) }
+            
+            // Apply custom notched background with glow
+            background = CyberpunkNotchedDrawable(
+                backgroundColor = darkBg,
+                borderColor = borderColor,
+                glowColor = borderColor,
+                isMainSlot = true
+            )
         }
 
-        // Top Header Row of Slot
-        val topBar = LinearLayout(this).apply {
+        // Content Row
+        val contentRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(16, 10, 16, 10)
+            setPadding(24, 20, 16, 20)
         }
 
+        // 1. Text Info (Left)
         val textStack = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         val titleView = TextView(this).apply {
-            text = name
-            textSize = 14f
+            text = name.uppercase()
+            textSize = 15f
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
+            letterSpacing = 0.05f
         }
         textStack.addView(titleView)
 
-        val tierTagRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 2, 0, 0)
-        }
-
-        val tagBox = TextView(this).apply {
-            text = statusTag
+        val statusBox = TextView(this).apply {
+            text = statusTag.uppercase()
             textSize = 9f
-            setTextColor(Color.parseColor("#00E5FF"))
+            setTextColor(cyan)
             typeface = Typeface.MONOSPACE
             background = GradientDrawable().apply {
-                setStroke(1, Color.parseColor("#00E5FF"))
+                setStroke(1, cyan)
                 cornerRadius = 1f
             }
-            setPadding(6, 1, 6, 1)
+            setPadding(8, 2, 8, 2)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 6, 0, 0) }
         }
-        tierTagRow.addView(tagBox)
+        textStack.addView(statusBox)
+        contentRow.addView(textStack)
 
-        val tierText = TextView(this).apply {
-            text = "  $tier"
-            textSize = 9f
-            setTextColor(Color.parseColor("#FFE600"))
-            typeface = Typeface.MONOSPACE
-        }
-        tierTagRow.addView(tierText)
-        textStack.addView(tierTagRow)
-
-        topBar.addView(textStack)
-
-        // RAM Badge (Authentic In-Game Box)
-        val ramBox = LinearLayout(this).apply {
+        // 2. RAM Indicator (Right)
+        val ramLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(10, 4, 10, 4)
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#050A12"))
-                setStroke(1, Color.parseColor("#1B2A40"))
-            }
+            setPadding(12, 6, 12, 6)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(16, 0, 16, 0) }
+            
+            background = CyberpunkNotchedDrawable(
+                backgroundColor = Color.parseColor("#050A12"),
+                borderColor = Color.parseColor("#1B2A40"),
+                isMainSlot = false,
+                notchSize = 8f
+            )
         }
 
-        val ramText = TextView(this).apply {
+        val ramView = TextView(this).apply {
             text = ramCost
-            textSize = 16f
+            textSize = 20f
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
         }
-        ramBox.addView(ramText)
+        ramLayout.addView(ramView)
 
         val ramIcon = TextView(this).apply {
             text = " ▮"
-            textSize = 12f
-            setTextColor(Color.parseColor("#00E5FF"))
+            textSize = 14f
+            setTextColor(cyan)
         }
-        ramBox.addView(ramIcon)
-        topBar.addView(ramBox)
+        ramLayout.addView(ramIcon)
+        contentRow.addView(ramLayout)
 
-        // Icon Box
+        // 3. Icon Box (Far Right)
+        val iconBox = LinearLayout(this).apply {
+            gravity = Gravity.CENTER
+            setPadding(14, 14, 14, 14)
+            background = CyberpunkNotchedDrawable(
+                backgroundColor = Color.TRANSPARENT,
+                borderColor = cyan,
+                isMainSlot = false,
+                notchSize = 10f
+            )
+        }
+
         val iconView = TextView(this).apply {
             text = iconText
-            textSize = 16f
-            setTextColor(Color.parseColor("#00E5FF"))
-            gravity = Gravity.CENTER
-            setPadding(10, 8, 10, 8)
-            background = GradientDrawable().apply {
-                setStroke(1, Color.parseColor("#00E5FF"))
-                cornerRadius = 1f
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(10, 0, 0, 0) }
+            textSize = 18f
+            setTextColor(cyan)
         }
-        topBar.addView(iconView)
+        iconBox.addView(iconView)
+        contentRow.addView(iconBox)
 
-        cardContainer.addView(topBar)
+        cardContainer.addView(contentRow)
         return cardContainer
+    }
+
+    // --- Custom Authentic Cyberpunk Notched Graphics Engine ---
+    private class CyberpunkNotchedDrawable(
+        val backgroundColor: Int,
+        val borderColor: Int,
+        val glowColor: Int = 0,
+        val isMainSlot: Boolean = true,
+        val notchSize: Float = 24f
+    ) : android.graphics.drawable.Drawable() {
+
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        private val strokePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        private val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        private val path = android.graphics.Path()
+
+        override fun draw(canvas: android.graphics.Canvas) {
+            val b = bounds
+            val w = b.width().toFloat()
+            val h = b.height().toFloat()
+
+            path.reset()
+            if (isMainSlot) {
+                // Cyberpunk Slot Geometry: Notched Top-Right and Bottom-Left
+                path.moveTo(0f, 0f)
+                path.lineTo(w - notchSize, 0f)
+                path.lineTo(w, notchSize)
+                path.lineTo(w, h)
+                path.lineTo(notchSize, h)
+                path.lineTo(0f, h - notchSize)
+                path.close()
+            } else {
+                // Smaller Sub-Slot Geometry: Symmetrical Notches
+                path.moveTo(notchSize, 0f)
+                path.lineTo(w - notchSize, 0f)
+                path.lineTo(w, notchSize)
+                path.lineTo(w, h - notchSize)
+                path.lineTo(w - notchSize, h)
+                path.lineTo(notchSize, h)
+                path.lineTo(0f, h - notchSize)
+                path.lineTo(0f, notchSize)
+                path.close()
+            }
+
+            // 1. Draw Background
+            paint.color = backgroundColor
+            paint.style = android.graphics.Paint.Style.FILL
+            canvas.drawPath(path, paint)
+
+            // 2. Draw Glow (if color provided)
+            if (glowColor != 0) {
+                glowPaint.color = glowColor
+                glowPaint.style = android.graphics.Paint.Style.STROKE
+                glowPaint.strokeWidth = 4f
+                glowPaint.maskFilter = android.graphics.BlurMaskFilter(8f, android.graphics.BlurMaskFilter.Blur.OUTER)
+                canvas.drawPath(path, glowPaint)
+            }
+
+            // 3. Draw Main Border
+            strokePaint.color = borderColor
+            strokePaint.style = android.graphics.Paint.Style.STROKE
+            strokePaint.strokeWidth = 3f
+            canvas.drawPath(path, strokePaint)
+        }
+
+        override fun setAlpha(alpha: Int) { paint.alpha = alpha }
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) { paint.colorFilter = colorFilter }
+        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
     }
 
     private fun checkAndRequestOverlayPermission() {
