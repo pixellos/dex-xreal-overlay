@@ -27,14 +27,14 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(48, 48, 48, 48)
-            setBackgroundColor(Color.parseColor("#0D0F12"))
+            setBackgroundColor(Color.parseColor("#06080E"))
         }
 
         // --- Header ---
         val titleText = TextView(this).apply {
-            text = "👓 Cyberpunk DeX HUD"
+            text = "⚡ Cyberpunk 2077 Minimal HUD"
             textSize = 24f
-            setTextColor(Color.parseColor("#00E5FF"))
+            setTextColor(Color.parseColor("#FFE600"))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setPadding(0, 0, 0, 4)
             gravity = Gravity.CENTER
@@ -42,15 +42,15 @@ class MainActivity : Activity() {
         rootLayout.addView(titleText)
 
         val subtitleText = TextView(this).apply {
-            text = "XREAL 1s & Samsung DeX Configurator"
+            text = "Ultra-Minimal Time Overlay for XREAL 1s & Samsung DeX"
             textSize = 13f
             setTextColor(Color.LTGRAY)
-            setPadding(0, 0, 0, 32)
+            setPadding(0, 0, 0, 36)
             gravity = Gravity.CENTER
         }
         rootLayout.addView(subtitleText)
 
-        // --- Section 1: HUD Position ---
+        // --- Position Selector ---
         val posLabel = TextView(this).apply {
             text = "📍 HUD Position:"
             textSize = 16f
@@ -64,17 +64,17 @@ class MainActivity : Activity() {
 
         val posGroup = RadioGroup(this).apply {
             orientation = RadioGroup.HORIZONTAL
-            setPadding(0, 0, 0, 24)
+            setPadding(0, 0, 0, 32)
         }
 
         val rbTopRight = RadioButton(this).apply {
             text = "Top-Right Corner"
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#FFE600"))
             isChecked = currentPos == OverlayService.POS_TOP_RIGHT
         }
         val rbTopLeft = RadioButton(this).apply {
             text = "Top-Left Corner"
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#FFE600"))
             isChecked = currentPos == OverlayService.POS_TOP_LEFT
         }
 
@@ -84,84 +84,27 @@ class MainActivity : Activity() {
         posGroup.setOnCheckedChangeListener { _, checkedId ->
             val selectedPos = if (checkedId == rbTopLeft.id) OverlayService.POS_TOP_LEFT else OverlayService.POS_TOP_RIGHT
             prefs.edit().putString(OverlayService.KEY_POSITION, selectedPos).apply()
-            Toast.makeText(this, "HUD Position Updated to $selectedPos", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Position set to $selectedPos", Toast.LENGTH_SHORT).show()
             restartOverlayServiceIfRunning()
         }
         rootLayout.addView(posGroup)
 
-        // --- Section 2: Map & Navigation Mode ---
-        val mapLabel = TextView(this).apply {
-            text = "🗺️ Map & Navigation Mode:"
-            textSize = 16f
-            setTextColor(Color.WHITE)
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(0, 0, 0, 8)
-        }
-        rootLayout.addView(mapLabel)
-
-        val currentMapMode = prefs.getString(OverlayService.KEY_MAP_MODE, OverlayService.MAP_MODE_AUTO_NAV)
-
-        val mapGroup = RadioGroup(this).apply {
-            orientation = RadioGroup.VERTICAL
-            setPadding(0, 0, 0, 24)
-        }
-
-        val rbAutoNav = RadioButton(this).apply {
-            text = "Auto-Show Only When Google Maps Nav is Active (Recommended)"
-            setTextColor(Color.parseColor("#00E5FF"))
-            isChecked = currentMapMode == OverlayService.MAP_MODE_AUTO_NAV
-        }
-        val rbAlwaysOn = RadioButton(this).apply {
-            text = "Always Show Map Widget"
-            setTextColor(Color.WHITE)
-            isChecked = currentMapMode == OverlayService.MAP_MODE_ALWAYS_ON
-        }
-        val rbOff = RadioButton(this).apply {
-            text = "Disable Map Widget (Clock & Battery Only)"
-            setTextColor(Color.LTGRAY)
-            isChecked = currentMapMode == OverlayService.MAP_MODE_OFF
-        }
-
-        mapGroup.addView(rbAutoNav)
-        mapGroup.addView(rbAlwaysOn)
-        mapGroup.addView(rbOff)
-
-        mapGroup.setOnCheckedChangeListener { _, checkedId ->
-            val selectedMode = when (checkedId) {
-                rbAlwaysOn.id -> OverlayService.MAP_MODE_ALWAYS_ON
-                rbOff.id -> OverlayService.MAP_MODE_OFF
-                else -> OverlayService.MAP_MODE_AUTO_NAV
-            }
-            prefs.edit().putString(OverlayService.KEY_MAP_MODE, selectedMode).apply()
-            Toast.makeText(this, "Map Mode Updated: $selectedMode", Toast.LENGTH_SHORT).show()
-            restartOverlayServiceIfRunning()
-        }
-        rootLayout.addView(mapGroup)
-
-        // --- Section 3: System Permissions ---
+        // --- Permission Button ---
         val btnPermission = Button(this).apply {
-            text = "1. Grant 'Display Over Other Apps'"
+            text = "Grant 'Display Over Other Apps' Permission"
             setBackgroundColor(Color.parseColor("#222222"))
             setTextColor(Color.WHITE)
             setOnClickListener { checkAndRequestOverlayPermission() }
         }
         rootLayout.addView(btnPermission)
 
-        val btnNavPermission = Button(this).apply {
-            text = "2. Grant Notification Access (for Google Maps Sync)"
-            setBackgroundColor(Color.parseColor("#222222"))
-            setTextColor(Color.parseColor("#FFE600"))
-            setOnClickListener { openNotificationListenerSettings() }
-        }
-        rootLayout.addView(btnNavPermission)
-
         val spacer = TextView(this).apply { text = "\n" }
         rootLayout.addView(spacer)
 
-        // --- Section 4: Overlay Controls ---
+        // --- Start/Stop Buttons ---
         val btnStart = Button(this).apply {
             text = "🚀 START CYBERPUNK HUD"
-            setBackgroundColor(Color.parseColor("#00E5FF"))
+            setBackgroundColor(Color.parseColor("#FFE600"))
             setTextColor(Color.BLACK)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setOnClickListener { startOverlayService() }
@@ -170,7 +113,7 @@ class MainActivity : Activity() {
 
         val btnStop = Button(this).apply {
             text = "⏹️ STOP HUD"
-            setBackgroundColor(Color.parseColor("#FF3366"))
+            setBackgroundColor(Color.parseColor("#FF0055"))
             setTextColor(Color.WHITE)
             setOnClickListener { stopOverlayService() }
         }
@@ -178,18 +121,8 @@ class MainActivity : Activity() {
 
         setContentView(rootLayout)
 
-        // Auto-start Overlay Service on launch if permission is granted
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
             startOverlayService()
-        }
-    }
-
-    private fun openNotificationListenerSettings() {
-        try {
-            val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-            startActivity(intent)
-        } catch (e: Exception) {
-            Toast.makeText(this, "Open Notification Listener settings in phone settings", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -202,7 +135,7 @@ class MainActivity : Activity() {
                 )
                 startActivityForResult(intent, 101)
             } else {
-                Toast.makeText(this, "Overlay Permission Already Granted!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Permission Already Granted!", Toast.LENGTH_SHORT).show()
             }
         }
     }

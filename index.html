@@ -3,20 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cyberpunk DeX & XREAL HUD Simulator</title>
-    <!-- Leaflet OpenStreetMap for interactive map demo -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <title>Cyberpunk 2077 Minimal Time HUD</title>
     <style>
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Segoe UI', 'Courier New', monospace;
+            font-family: 'Courier New', 'Consolas', monospace;
         }
 
         body {
-            background-color: #080a0f;
+            background-color: #05070a;
             color: #ffffff;
             display: flex;
             flex-direction: column;
@@ -31,27 +28,28 @@
         }
 
         header h1 {
-            color: #00E5FF;
+            color: #FFE600;
             font-size: 26px;
             margin-bottom: 6px;
-            text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+            text-shadow: 0 0 14px rgba(255, 230, 0, 0.7);
+            letter-spacing: 2px;
         }
 
         header p {
-            color: #a0aab0;
-            font-size: 14px;
+            color: #8a94a0;
+            font-size: 13px;
         }
 
         .main-container {
             display: flex;
             gap: 24px;
-            max-width: 1200px;
+            max-width: 1100px;
             width: 100%;
             flex-wrap: wrap;
             justify-content: center;
         }
 
-        /* XREAL Display Simulator */
+        /* XREAL Display Simulator Frame */
         .xreal-display {
             position: relative;
             width: 800px;
@@ -59,23 +57,23 @@
             background: #000;
             border-radius: 16px;
             overflow: hidden;
-            box-shadow: 0 0 35px rgba(0, 229, 255, 0.25);
-            border: 2px solid #1a2332;
+            box-shadow: 0 0 35px rgba(255, 230, 0, 0.25);
+            border: 2px solid #1a202c;
         }
 
         .xreal-badge {
             position: absolute;
             top: 12px;
             left: 16px;
-            background: rgba(0, 0, 0, 0.8);
-            color: #00E5FF;
+            background: rgba(0, 0, 0, 0.85);
+            color: #FFE600;
             padding: 4px 12px;
-            border-radius: 20px;
+            border-radius: 4px;
             font-size: 11px;
             font-weight: 700;
             z-index: 10;
-            border: 1px solid rgba(0, 229, 255, 0.4);
-            letter-spacing: 1px;
+            border: 1px solid rgba(255, 230, 0, 0.5);
+            letter-spacing: 1.5px;
         }
 
         .video-simulator {
@@ -84,221 +82,106 @@
             object-fit: cover;
         }
 
-        /* Cyberpunk Minimal Floating Overlay */
-        .cyberpunk-hud {
+        /* --- Pure Minimalist Cyberpunk 2077 Time HUD --- */
+        .cyberpunk-time-hud {
             position: absolute;
-            top: 30px;
-            right: 30px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
+            top: 35px;
+            right: 35px;
             z-index: 100;
             user-select: none;
-            transition: all 0.3s ease;
-        }
-
-        .hud-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: rgba(0, 0, 0, 0.65);
-            backdrop-filter: blur(8px);
-            padding: 6px 14px;
-            border-radius: 20px;
-            border: 1px solid rgba(0, 229, 255, 0.3);
-            box-shadow: 0 0 15px rgba(0, 229, 255, 0.2);
+            transition: all 0.2s ease;
+            background: transparent; /* 100% Transparent for XREAL Micro-OLED */
         }
 
         .hud-clock {
-            font-size: 18px;
-            font-weight: 700;
-            color: #00E5FF;
-            letter-spacing: 1px;
-            text-shadow: 0 0 8px rgba(0, 229, 255, 0.8);
-        }
-
-        .hud-divider {
-            color: #445566;
-            font-size: 12px;
-        }
-
-        .hud-battery {
-            font-size: 14px;
-            font-weight: 700;
-            color: #FFE600;
-            text-shadow: 0 0 6px rgba(255, 230, 0, 0.6);
-        }
-
-        /* Nav Turn-by-Turn Card */
-        .nav-card {
-            background: rgba(17, 0, 34, 0.85);
-            border: 1px solid rgba(255, 0, 85, 0.4);
-            border-radius: 10px;
-            padding: 10px 14px;
-            color: #fff;
-            box-shadow: 0 0 20px rgba(255, 0, 85, 0.3);
-            display: none;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .nav-title {
-            color: #FF0055;
-            font-weight: 700;
-            font-size: 13px;
-            margin-bottom: 2px;
-            letter-spacing: 0.5px;
-        }
-
-        .nav-sub {
-            font-size: 11px;
-            color: #d0d8e0;
-        }
-
-        .map-container {
-            width: 280px;
-            height: 170px;
-            border-radius: 10px;
-            overflow: hidden;
-            opacity: 0.75;
-            border: 1px solid rgba(0, 229, 255, 0.3);
-            display: none;
-        }
-
-        #map {
-            width: 100%;
-            height: 100%;
+            color: #FFE600; /* Cyberpunk Signature Yellow */
+            font-size: 26px;
+            font-weight: 900;
+            letter-spacing: 2.5px;
+            text-shadow: 0 0 14px rgba(255, 230, 0, 0.9), 0 0 2px #FFE600;
+            padding: 4px 8px;
         }
 
         /* Controls Panel */
         .controls-panel {
             flex: 1;
-            min-width: 320px;
-            background: #121824;
-            padding: 22px;
+            min-width: 280px;
+            background: #0d121c;
+            padding: 24px;
             border-radius: 16px;
-            border: 1px solid #243044;
+            border: 1px solid #1e293b;
             height: fit-content;
         }
 
         .controls-panel h2 {
             font-size: 18px;
-            color: #00E5FF;
+            color: #FFE600;
             margin-bottom: 16px;
-            border-bottom: 1px solid #243044;
+            border-bottom: 1px solid #1e293b;
             padding-bottom: 10px;
+            letter-spacing: 1px;
         }
 
         .control-group {
-            margin-bottom: 18px;
+            margin-bottom: 16px;
         }
 
         .control-group label {
             display: block;
             font-size: 13px;
-            color: #8b949e;
-            margin-bottom: 6px;
-            font-weight: 600;
-        }
-
-        .btn {
-            background: #238636;
-            color: #fff;
-            border: none;
-            padding: 10px 16px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            width: 100%;
-            margin-bottom: 10px;
-            transition: 0.2s;
-        }
-
-        .btn:hover {
-            background: #2ea043;
-        }
-
-        .btn-cyan {
-            background: #00E5FF;
-            color: #000;
-        }
-
-        .btn-cyan:hover {
-            background: #33ebff;
+            color: #94a3b8;
+            margin-bottom: 8px;
+            font-weight: 700;
         }
 
         .select-input {
             width: 100%;
-            padding: 8px 12px;
+            padding: 10px 14px;
             border-radius: 6px;
-            background: #090d14;
-            color: #fff;
-            border: 1px solid #243044;
-            margin-bottom: 10px;
+            background: #060910;
+            color: #FFE600;
+            border: 1px solid #243247;
+            font-weight: 700;
         }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>👓 Cyberpunk DeX HUD & Google Maps Sync</h1>
-        <p>Minimal AR HUD with Battery Indicator & Google Maps Turn-by-Turn Auto-Sync</p>
+        <h1>⚡ Cyberpunk 2077 Ultra-Minimal Time HUD</h1>
+        <p>Pure transparent background with glowing Cyberpunk Yellow time (No boxes, battery, or clutter)</p>
     </header>
 
     <div class="main-container">
         <!-- XREAL Display Simulator -->
         <div class="xreal-display" id="xrealDisplay">
-            <div class="xreal-badge">XREAL 1s • CYBERPUNK HUD</div>
+            <div class="xreal-badge">XREAL 1s • CYBERPUNK 2077 HUD</div>
             
             <video class="video-simulator" autoplay loop muted poster="https://images.unsplash.com/photo-1534447677768-be436bb09401?w=1200">
                 <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
             </video>
 
-            <!-- Cyberpunk HUD Overlay -->
-            <div class="cyberpunk-hud" id="hudWidget">
-                <div class="hud-header">
-                    <div class="hud-clock" id="clock">17:14:05</div>
-                    <div class="hud-divider">│</div>
-                    <div class="hud-battery" id="battery">⚡ 88%</div>
-                </div>
-
-                <!-- Turn-by-Turn Card -->
-                <div class="nav-card" id="navCard">
-                    <div class="nav-title" id="navTitle">🪧 200m • Turn Right</div>
-                    <div class="nav-sub" id="navSub">Main St towards City Center</div>
-                </div>
-
-                <div class="map-container" id="mapContainer">
-                    <div id="map"></div>
-                </div>
+            <!-- Pure Cyberpunk Time Overlay -->
+            <div class="cyberpunk-time-hud" id="hudWidget">
+                <div class="hud-clock" id="clock">17:30:47</div>
             </div>
         </div>
 
         <!-- Controls Panel -->
         <div class="controls-panel">
-            <h2>🎛️ HUD Configuration</h2>
+            <h2>📍 HUD Controls</h2>
 
             <div class="control-group">
-                <label>📍 HUD Position:</label>
-                <select class="select-input" onchange="setHudPosition(this.value)">
-                    <option value="top-right">Top-Right Corner</option>
-                    <option value="top-left">Top-Left Corner</option>
+                <label>Corner Position:</label>
+                <select class="select-input" onchange="setCornerPosition(this.value)">
+                    <option value="right">Top-Right Corner</option>
+                    <option value="left">Top-Left Corner</option>
                 </select>
             </div>
 
-            <div class="control-group">
-                <label>🗺️ Map & Navigation Mode:</label>
-                <select class="select-input" onchange="setMapMode(this.value)">
-                    <option value="auto">Auto-Show Only When Nav Active (Recommended)</option>
-                    <option value="always">Always Show Map</option>
-                    <option value="off">Disabled (Clock & Battery Only)</option>
-                </select>
-            </div>
-
-            <button class="btn btn-cyan" onclick="toggleSimulatedNav()">🚘 Simulate Active Google Maps Nav</button>
-
-            <div style="background:#090d14; padding:12px; border-radius:8px; font-size:12px; color:#8b949e; margin-top:16px;">
-                <span style="color:#00E5FF; font-weight:bold;">Real App Sync Note:</span><br>
-                In the Android app, <code style="color:#FFE600;">MapsNavListenerService</code> automatically captures real-time Google Maps turn directions and battery level updates!
+            <div style="background:#060910; padding:12px; border-radius:8px; font-size:12px; color:#94a3b8; margin-top:20px; line-height:1.5;">
+                <span style="color:#FFE600; font-weight:bold;">Micro-OLED Note:</span><br>
+                Because the background is 100% transparent (`#00000000`), looking through XREAL lenses renders zero box borders—only the pure glowing Cyberpunk yellow numbers float in your vision.
             </div>
         </div>
     </div>
@@ -312,42 +195,15 @@
         setInterval(updateClock, 1000);
         updateClock();
 
-        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([37.7749, -122.4194], 14);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-
-        let isNavActive = false;
-        let mapMode = 'auto';
-
-        function setHudPosition(pos) {
+        function setCornerPosition(pos) {
             const hud = document.getElementById('hudWidget');
-            if (pos === 'top-left') {
-                hud.style.left = '30px';
+            if (pos === 'left') {
+                hud.style.left = '35px';
                 hud.style.right = 'auto';
             } else {
-                hud.style.right = '30px';
+                hud.style.right = '35px';
                 hud.style.left = 'auto';
             }
-        }
-
-        function setMapMode(mode) {
-            mapMode = mode;
-            updateVisibility();
-        }
-
-        function toggleSimulatedNav() {
-            isNavActive = !isNavActive;
-            updateVisibility();
-        }
-
-        function updateVisibility() {
-            const navCard = document.getElementById('navCard');
-            const mapContainer = document.getElementById('mapContainer');
-
-            const showNav = isNavActive && (mapMode === 'auto' || mapMode === 'always');
-            const showMap = mapMode === 'always' || (mapMode === 'auto' && isNavActive);
-
-            navCard.style.display = showNav ? 'block' : 'none';
-            mapContainer.style.display = showMap ? 'block' : 'none';
         }
     </script>
 </body>
