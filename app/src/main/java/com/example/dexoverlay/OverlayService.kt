@@ -40,6 +40,7 @@ class OverlayService : Service() {
     private var cursorX = 960f
     private var cursorY = 540f
 
+    private var webXrBridge: WebXrImuBridge? = null
     private var usbImuDriver: XrealUsbImuDriver? = null
     private var udpImuReceiver: UdpImuReceiver? = null
     private var isNavActive = false
@@ -321,7 +322,14 @@ class OverlayService : Service() {
             }
         }
 
-        // 1. Direct XREAL Headset USB Hardware Driver (0xAA 0xC5 Handshake)
+        // 1. WebXR Device API Engine Bridge
+        webXrBridge = WebXrImuBridge(this).apply {
+            onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
+            onGlassesSingleTapListener = { onSingleTap() }
+            startBridge()
+        }
+
+        // 2. Direct XREAL Headset USB Hardware Driver
         usbImuDriver = XrealUsbImuDriver(this).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             onGlassesSingleTapListener = { onSingleTap() }
@@ -331,7 +339,7 @@ class OverlayService : Service() {
             usbImuDriver?.startReading(device)
         }
 
-        // 2. Ethernet / UDP Network Receiver (Port 9090)
+        // 3. Ethernet / UDP Network Receiver (Port 9090)
         udpImuReceiver = UdpImuReceiver(9090).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             onGlassesSingleTapListener = { onSingleTap() }
@@ -358,8 +366,8 @@ class OverlayService : Service() {
         }
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Cyberpunk HUD & XREAL Headset Active")
-            .setContentText("XREAL 1s Glasses Hardware IMU Only")
+            .setContentTitle("Cyberpunk HUD & WebXR Engine Active")
+            .setContentText("WebXR Device API Pose Tracking Active")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
 
@@ -369,6 +377,7 @@ class OverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacks(clockRunnable)
+        webXrBridge?.stopBridge()
         usbImuDriver?.stopReading()
         udpImuReceiver?.stopListening()
         try {

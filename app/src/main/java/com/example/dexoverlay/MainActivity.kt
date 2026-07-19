@@ -76,7 +76,7 @@ class MainActivity : Activity() {
         headerCard.addView(headerText)
 
         val statusTag = TextView(this).apply {
-            text = "[ XREAL 1s USB DIAGNOSTICS ]"
+            text = "[ WEBXR DEVICE API ENGINE ]"
             textSize = 10f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -87,13 +87,13 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
-        // --- Card 1: Head Tracking Control & USB Terminal ---
+        // --- Card 1: Head Tracking Control & WebXR Engine ---
         val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, true)
 
-        val connCard = createCompactCard("👓 XREAL 1s HEADSET HARDWARE CURSOR", "#00E5FF")
+        val connCard = createCompactCard("🌐 WEBXR DEVICE API HEAD CURSOR", "#00E5FF")
 
         val cbHeadCursor = CheckBox(this).apply {
-            text = " Enable XREAL Headset IMU Cursor"
+            text = " Enable WebXR Head Tracking Cursor"
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             textSize = 12f
@@ -101,7 +101,7 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { buttonView, isChecked ->
                 if (buttonView.isPressed) {
                     prefs.edit().putBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, isChecked).apply()
-                    Toast.makeText(this@MainActivity, "XREAL Headset Cursor ${if (isChecked) "ON" else "OFF"}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "WebXR Cursor ${if (isChecked) "ON" else "OFF"}", Toast.LENGTH_SHORT).show()
                     restartOverlayServiceIfRunning()
                 }
             }
@@ -140,9 +140,9 @@ class MainActivity : Activity() {
         }
         connCard.addView(btnScanUsb)
 
-        // Live USB Terminal Log Card
+        // Live Diagnostic Terminal Log Card
         debugTextView = TextView(this).apply {
-            text = "> USB Diagnostic Terminal Ready.\n> Plug in XREAL 1s glasses to start."
+            text = "> WebXR Device API Engine Ready.\n> Plug in XREAL 1s glasses to start."
             textSize = 9f
             setTextColor(Color.parseColor("#00FF66"))
             typeface = Typeface.MONOSPACE
