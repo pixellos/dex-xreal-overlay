@@ -1,16 +1,17 @@
-# DeX & XREAL Floating Clock + Maps Overlay 👓🕒
+# DeX & XREAL Cyberpunk HUD Overlay 👓⚡
 
-A lightweight native Android application and system overlay service designed for **Samsung DeX on XREAL 1s smart glasses** (and external displays). It renders an always-on-top, non-intrusive digital clock and semi-transparent Google Maps widget directly over full-screen video streams.
+A lightweight native Android application and system overlay service designed for **Samsung DeX on XREAL 1s smart glasses** (and external displays). It renders an always-on-top, transparent Cyberpunk 2077 HUD with digital clock, 5-segment battery bar, and traced vector directions directly over full-screen content.
 
 ---
 
 ## ✨ Features
 
-- **XREAL Micro-OLED True-Black Shader**: Projects pure black (`#000000`) as 100% transparent in AR glasses, producing a floating digital HUD readout in your Field of View (FOV).
+- **XREAL Micro-OLED True-Black Shader**: Projects pure black (`#00000000`) as 100% transparent in AR glasses, producing a floating digital HUD readout in your Field of View (FOV).
+- **Cyberpunk 2077 In-Game Quickhack Menu**: Authentic in-game Cyberdeck menu interface with Quickhack skill cards, RAM cost badges, status tags, and customizable HUD scale slider (0.25x to 1.50x).
+- **Cyberpunk Traced Directions**: Automatically parses turn-by-turn directions from Google Maps into transparent floating vector arrows (`🠺`, `🠸`, `🠹`, `⤺`) and glowing street text.
+- **HUD Alignment Calibrator**: Smooth touch pad and pixel-precise D-Pad alignment controls.
 - **Samsung DeX Multi-Display Support**: Uses Android `DisplayManager` to target the secondary DeX / XREAL display context (`displayId != DEFAULT_DISPLAY`).
-- **Touch Pass-Through (`FLAG_NOT_TOUCHABLE`)**: Click or tap right through the floating clock to interact with underlying video player controls on DeX.
-- **Interactive Local Browser Preview**: Includes `index.html` to instantly simulate and test the XREAL overlay layout on any browser.
-- **Automated GitHub CI/CD Pipeline**: Automatically builds and attaches `app-debug.apk` to GitHub Releases on tag push (`v*`).
+- **Automated Signed GitHub CI/CD Pipeline**: Automatically compiles signed release APK assets (`Cyberpunk-DeX-HUD-v*.apk`) on tag push (`v*`).
 
 ---
 
@@ -25,8 +26,8 @@ A lightweight native Android application and system overlay service designed for
 
 ## 🚀 Building & Running Locally
 
-### Option 1: Quick Install via Pre-built APK
-Download the compiled `app-debug.apk` directly from the [Releases](../../releases) tab.
+### Option 1: Quick Install via Pre-built Signed APK
+Download the compiled signed `Cyberpunk-DeX-HUD-v*.apk` directly from the [Releases](../../releases) tab.
 
 ### Option 2: Build in Android Studio
 1. Clone the repository:
@@ -44,10 +45,10 @@ Download the compiled `app-debug.apk` directly from the [Releases](../../release
 
 ## 📦 Automated Release Pipeline (CI/CD)
 
-Whenever a version tag is pushed (e.g. `v1.0.0`), GitHub Actions automatically:
+Whenever a version tag is pushed (e.g. `v1.8.0`), GitHub Actions automatically:
 1. Sets up JDK 17 (Temurin).
-2. Compiles `app-debug.apk` using `./gradlew assembleDebug`.
-3. Creates a new **GitHub Release** and attaches `app-debug.apk` as an asset.
+2. Compiles signed release APK using `./gradlew assembleRelease`.
+3. Creates a new **GitHub Release** and attaches `Cyberpunk-DeX-HUD-v*.apk` as an asset.
 
 ---
 
