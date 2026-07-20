@@ -230,8 +230,6 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     if (volDownHoldAction == OverlayService.ACTION_VAL_SCROLL) {
                         notifyScrollMode(true)
                         log("KEY INTERCEPT: Vol Down DOWN → hold to scroll vertical by head pitch")
-                    } else if (volDownHoldAction == OverlayService.ACTION_VAL_TOGGLE_HUD) {
-                        mainHandler.postDelayed(volDownLongPressRunnable, 5000)
                     }
                 }
                 if (mouseModeEnabled) return true

@@ -158,7 +158,7 @@ class MainActivity : Activity() {
 
         val logMin = Math.log10(0.1) // -1.0
         val logMax = Math.log10(4.0) // 0.602
-        val currentSens = prefs.getFloat(OverlayService.KEY_HEAD_SENSITIVITY, 1.0f)
+        val currentSens = prefs.getFloat(OverlayService.KEY_HEAD_SENSITIVITY, 0.45f)
         val sensLabel = label("Head Sensitivity: ${String.format("%.2f", currentSens)}x (Log Filtered)", YELLOW, 11f)
         tuningCard.addView(sensLabel)
 

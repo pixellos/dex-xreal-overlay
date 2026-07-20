@@ -28,6 +28,59 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Industry-standard 1€ (One Euro) Filter for adaptive head-tracking jitter suppression.
+ * Dynamically adjusts cutoff frequency based on movement speed:
+ * - At low speed: Low cutoff frequency to completely eliminate micro-jitter & tremor.
+ * - At high speed: High cutoff frequency for zero-latency instant response.
+ */
+class OneEuroFilter(
+    var minCutoff: Float = 1.2f,   // Cutoff frequency at rest (Hz) — lower = smoother/zero jitter
+    var beta: Float = 0.007f,      // Velocity response slope — higher = zero lag on quick movement
+    var dCutoff: Float = 1.0f      // Derivative cutoff frequency (Hz)
+) {
+    private var xPrev: Float? = null
+    private var dxPrev: Float = 0.0f
+    private var tPrev: Long? = null
+
+    private fun alpha(cutoff: Float, dt: Float): Float {
+        val tau = 1.0f / (2.0f * Math.PI.toFloat() * cutoff)
+        return 1.0f / (1.0f + tau / dt)
+    }
+
+    fun filter(x: Float, timestampMs: Long): Float {
+        if (tPrev == null || xPrev == null) {
+            xPrev = x
+            tPrev = timestampMs
+            dxPrev = 0.0f
+            return x
+        }
+
+        val dt = ((timestampMs - tPrev!!) / 1000.0f).coerceIn(0.001f, 0.1f)
+        tPrev = timestampMs
+
+        // Estimate velocity (derivative)
+        val dx = (x - xPrev!!) / dt
+        val aD = alpha(dCutoff, dt)
+        val edx = aD * dx + (1.0f - aD) * dxPrev
+        dxPrev = edx
+
+        // Dynamic cutoff frequency based on velocity magnitude
+        val cutoff = minCutoff + beta * Math.abs(edx)
+        val a = alpha(cutoff, dt)
+
+        val xHat = a * x + (1.0f - a) * xPrev!!
+        xPrev = xHat
+        return xHat
+    }
+
+    fun reset() {
+        xPrev = null
+        tPrev = null
+        dxPrev = 0.0f
+    }
+}
+
 class OverlayService : Service() {
 
     private lateinit var windowManager: WindowManager
@@ -48,14 +101,16 @@ class OverlayService : Service() {
     private var screenWidth = 1920f
     private var screenHeight = 1080f
 
-    // Cursor Movement & Smoothing
+    // Cursor Movement & 1Euro Adaptive Filtering
     private var rawCursorX = 960f
     private var rawCursorY = 540f
     private var cursorX = 960f
     private var cursorY = 540f
     private var cursorMeasuredWidth = 60
     private var cursorMeasuredHeight = 60
-    private var isCursorLoopRunning = false
+
+    private val filterX = OneEuroFilter(minCutoff = 1.2f, beta = 0.007f)
+    private val filterY = OneEuroFilter(minCutoff = 1.2f, beta = 0.007f)
 
     // Scroll mode (holding Volume Down + tilting head)
     private var isScrollModeActive = false
@@ -75,30 +130,6 @@ class OverlayService : Service() {
 
     private val hideModeLabelRunnable = Runnable {
         cursorModeLabel?.visibility = View.GONE
-    }
-
-    // 60FPS smooth lerp movement loop using GPU translation for max performance
-    private val smoothLoopRunnable = object : Runnable {
-        override fun run() {
-            if (!isCursorLoopRunning) return
-            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val smoothingFactor = prefs.getFloat(KEY_SMOOTHING_FACTOR, 0.35f).coerceIn(0.05f, 1.0f)
-
-            val dx = rawCursorX - cursorX
-            val dy = rawCursorY - cursorY
-
-            if (Math.abs(dx) > 0.05f || Math.abs(dy) > 0.05f) {
-                cursorX += dx * smoothingFactor
-                cursorY += dy * smoothingFactor
-                updateCursorViewPosition()
-                handler.postDelayed(this, 16) // ~60 FPS
-            } else {
-                cursorX = rawCursorX
-                cursorY = rawCursorY
-                updateCursorViewPosition()
-                isCursorLoopRunning = false
-            }
-        }
     }
 
     // Battery Monitor Receiver
@@ -392,7 +423,6 @@ class OverlayService : Service() {
         cursorLayout = container
         cursorRootFrame = rootFrame
 
-        // Full-screen MATCH_PARENT layer for ultra-performant GPU translationX/Y cursor updates
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -434,11 +464,6 @@ class OverlayService : Service() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val mouseModeEnabled = prefs.getBoolean(KEY_MOUSE_MODE_ENABLED, true)
         if (!mouseModeEnabled) return "❌"
-
-        val volUp = prefs.getString(KEY_VOL_UP_ACTION, "LEFT_CLICK")
-        if (volUp == ACTION_VAL_RECENTER) return "🎯"
-        if (volUp == ACTION_VAL_TOGGLE_HUD) return "👁"
-
         return "✛"
     }
 
@@ -446,13 +471,7 @@ class OverlayService : Service() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val mouseModeEnabled = prefs.getBoolean(KEY_MOUSE_MODE_ENABLED, true)
         if (!mouseModeEnabled) return Color.parseColor("#FF0055")
-
-        val volUp = prefs.getString(KEY_VOL_UP_ACTION, "LEFT_CLICK")
-        return when (volUp) {
-            ACTION_VAL_RECENTER -> Color.parseColor("#FFE600")
-            ACTION_VAL_TOGGLE_HUD -> Color.parseColor("#FF0055")
-            else -> Color.parseColor("#00E5FF")
-        }
+        return Color.parseColor("#00E5FF")
     }
 
     private fun updateCursorAppearance() {
@@ -521,17 +540,6 @@ class OverlayService : Service() {
                     LogBuffer.add("OVERLAY: Dispatching RIGHT_CLICK broadcast at ($cursorX, $cursorY)")
                     sendBroadcast(clickIntent)
                 }
-                ACTION_VAL_TOGGLE_HUD -> {
-                    isHudVisible = !isHudVisible
-                    overlayView?.visibility = if (isHudVisible) View.VISIBLE else View.GONE
-                }
-                ACTION_VAL_RECENTER -> {
-                    rawCursorX = screenWidth / 2f
-                    rawCursorY = screenHeight / 2f
-                    cursorX = rawCursorX
-                    cursorY = rawCursorY
-                    updateCursorViewPosition()
-                }
             }
         }
     }
@@ -540,6 +548,9 @@ class OverlayService : Service() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, true)
         if (!enableHeadCursor) return
+
+        filterX.reset()
+        filterY.reset()
 
         imuManager = XrealOneImuManager(this).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
@@ -551,10 +562,7 @@ class OverlayService : Service() {
         if (deltaX.isNaN() || deltaY.isNaN() || !deltaX.isFinite() || !deltaY.isFinite()) return
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val rawSensSetting = prefs.getFloat(KEY_HEAD_SENSITIVITY, 1.0f).coerceIn(0.1f, 5.0f)
-        
-        // Logarithmic Sensitivity Filtering: gives fine precision for small movements & fast sweeps for big movements
-        val sensitivity = rawSensSetting
+        val sensitivity = prefs.getFloat(KEY_HEAD_SENSITIVITY, 0.45f).coerceIn(0.1f, 5.0f)
 
         if (isScrollModeActive) {
             // While holding Volume Down, pitch head up/down to scroll vertically!
@@ -576,10 +584,12 @@ class OverlayService : Service() {
         rawCursorX = (rawCursorX + deltaX * 15f * sensitivity).coerceIn(0f, screenWidth)
         rawCursorY = (rawCursorY + deltaY * 15f * sensitivity).coerceIn(0f, screenHeight)
 
-        if (!isCursorLoopRunning) {
-            isCursorLoopRunning = true
-            handler.post(smoothLoopRunnable)
-        }
+        // Apply 1Euro Filter to adaptive-filter raw cursor coordinates in real time
+        val now = System.currentTimeMillis()
+        cursorX = filterX.filter(rawCursorX, now)
+        cursorY = filterY.filter(rawCursorY, now)
+
+        updateCursorViewPosition()
     }
 
     private fun updateClock() {
@@ -611,10 +621,8 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        isCursorLoopRunning = false
         handler.removeCallbacks(clockRunnable)
         handler.removeCallbacks(hideModeLabelRunnable)
-        handler.removeCallbacks(smoothLoopRunnable)
         imuManager?.stop()
         try {
             unregisterReceiver(batteryReceiver)
@@ -649,8 +657,7 @@ class OverlayService : Service() {
         const val KEY_MOUSE_MODE_ENABLED = "mouse_mode_enabled"
 
         // Configurable Head Sensitivity & Movement Smoothing
-        const val KEY_HEAD_SENSITIVITY = "head_sensitivity" // 0.1x to 5.0x (Log-filtered)
-        const val KEY_SMOOTHING_FACTOR  = "head_smoothing"   // 0.05 to 1.0
+        const val KEY_HEAD_SENSITIVITY = "head_sensitivity" // 0.1x to 5.0x (Log-filtered, default 0.45x)
 
         // Click Simulation Engine Options
         const val KEY_CLICK_ENGINE   = "click_engine"
@@ -659,8 +666,6 @@ class OverlayService : Service() {
 
         const val ACTION_VAL_LEFT_CLICK = "LEFT_CLICK"
         const val ACTION_VAL_RIGHT_CLICK = "RIGHT_CLICK"
-        const val ACTION_VAL_TOGGLE_HUD = "TOGGLE_HUD"
-        const val ACTION_VAL_RECENTER = "RECENTER"
         const val ACTION_VAL_SCROLL = "SCROLL"
         const val ACTION_VAL_NONE = "NONE"
 
