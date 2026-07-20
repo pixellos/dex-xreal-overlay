@@ -38,6 +38,7 @@ class XrealOneImuManager(private val context: Context) {
 
     private fun log(msg: String) {
         Log.d("XrealOneImu", msg)
+        LogBuffer.add(msg)
         val intent = Intent(MainActivity.ACTION_LOG_UPDATE).apply {
             putExtra(MainActivity.EXTRA_LOG_MSG, msg)
         }

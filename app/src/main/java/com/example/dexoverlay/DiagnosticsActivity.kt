@@ -61,6 +61,7 @@ class DiagnosticsActivity : Activity() {
             typeface = Typeface.MONOSPACE
             textSize = 11f
             setOnClickListener {
+                LogBuffer.clear()
                 consoleTextView.text = "> Console Cleared.\n"
             }
         }
@@ -83,7 +84,7 @@ class DiagnosticsActivity : Activity() {
         }
 
         consoleTextView = TextView(this).apply {
-            text = "> Initializing diagnostic scanner...\n> Connected receivers online.\n"
+            text = ""
             textSize = 10f
             setTextColor(Color.parseColor("#00FF66"))
             typeface = Typeface.MONOSPACE
@@ -94,7 +95,16 @@ class DiagnosticsActivity : Activity() {
 
         setContentView(rootLayout)
 
-        // Register receiver for logs
+        // Load historical logs
+        val savedLogs = LogBuffer.getLogs()
+        for (log in savedLogs) {
+            consoleTextView.append(log + "\n")
+        }
+        if (savedLogs.isEmpty()) {
+            consoleTextView.append("> Initializing diagnostic scanner...\n> Connected receivers online.\n")
+        }
+
+        // Register receiver for live logs
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(logReceiver, IntentFilter(MainActivity.ACTION_LOG_UPDATE), Context.RECEIVER_NOT_EXPORTED)
         } else {
@@ -103,6 +113,10 @@ class DiagnosticsActivity : Activity() {
 
         // Trigger an initial dump of network configurations
         dumpNetworkDiagnostics()
+
+        scrollView.post {
+            scrollView.fullScroll(ScrollView.FOCUS_DOWN)
+        }
     }
 
     private fun appendLog(msg: String) {
