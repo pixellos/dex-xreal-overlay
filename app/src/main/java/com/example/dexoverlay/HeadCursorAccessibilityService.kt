@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Path
 import android.os.Build
+import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 
 class HeadCursorAccessibilityService : AccessibilityService() {
@@ -46,6 +47,24 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             val gesture = GestureDescription.Builder().addStroke(stroke).build()
             dispatchGesture(gesture, null, null)
         }
+    }
+
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        val keyCode = event.keyCode
+        val action = event.action
+        if (action == KeyEvent.ACTION_DOWN) {
+            if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN ||
+                keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_A ||
+                keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                keyCode == KeyEvent.KEYCODE_ENTER
+            ) {
+                val triggerIntent = Intent("com.example.dexoverlay.TRIGGER_TAP")
+                sendBroadcast(triggerIntent)
+                return true // Consume key press to prevent system volume overlay or selection triggers
+            }
+        }
+        return super.onKeyEvent(event)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}

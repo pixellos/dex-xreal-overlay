@@ -125,6 +125,15 @@ class OverlayService : Service() {
         }
     }
 
+    // Key Tap Trigger Receiver
+    private val tapTriggerReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_TRIGGER_TAP) {
+                onSingleTap()
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         startForegroundServiceNotification()
@@ -133,10 +142,12 @@ class OverlayService : Service() {
             registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), RECEIVER_NOT_EXPORTED)
             registerReceiver(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE), RECEIVER_NOT_EXPORTED)
             registerReceiver(positionReceiver, IntentFilter(ACTION_UPDATE_POSITION), RECEIVER_NOT_EXPORTED)
+            registerReceiver(tapTriggerReceiver, IntentFilter(ACTION_TRIGGER_TAP), RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             registerReceiver(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE))
             registerReceiver(positionReceiver, IntentFilter(ACTION_UPDATE_POSITION))
+            registerReceiver(tapTriggerReceiver, IntentFilter(ACTION_TRIGGER_TAP))
         }
 
         setupOverlayWindow()
@@ -274,56 +285,56 @@ class OverlayService : Service() {
     private fun initImuDrivers() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, true)
-        val singleTapAction = prefs.getString(KEY_SINGLE_TAP_ACTION, SINGLE_TAP_ACTION_CLICK) ?: SINGLE_TAP_ACTION_CLICK
         if (!enableHeadCursor) return
-
-        fun onHeadMove(deltaX: Float, deltaY: Float) {
-            if (deltaX.isNaN() || deltaY.isNaN() || !deltaX.isFinite() || !deltaY.isFinite()) return
-            cursorX = (cursorX + deltaX * 15f).coerceIn(0f, 1920f)
-            cursorY = (cursorY + deltaY * 15f).coerceIn(0f, 1080f)
-
-            cursorParams?.let { params ->
-                params.x = cursorX.toInt()
-                params.y = cursorY.toInt()
-                handler.post {
-                    try {
-                        cursorView?.let { v -> windowManager.updateViewLayout(v, params) }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-            }
-        }
-
-        fun onSingleTap() {
-            handler.post {
-                cursorView?.setTextColor(Color.parseColor("#FFE600"))
-                handler.postDelayed({ cursorView?.setTextColor(Color.parseColor("#00E5FF")) }, 200)
-
-                when (singleTapAction) {
-                    SINGLE_TAP_ACTION_TOGGLE_HUD -> {
-                        isHudVisible = !isHudVisible
-                        overlayView?.visibility = if (isHudVisible) View.VISIBLE else View.GONE
-                    }
-                    SINGLE_TAP_ACTION_RECENTER -> {
-                        cursorX = 960f
-                        cursorY = 540f
-                    }
-                    else -> {
-                        val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
-                            putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
-                            putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
-                        }
-                        sendBroadcast(clickIntent)
-                    }
-                }
-            }
-        }
 
         imuManager = XrealOneImuManager(this).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
-            onSingleTapListener = { onSingleTap() }
             start()
+        }
+    }
+
+    private fun onHeadMove(deltaX: Float, deltaY: Float) {
+        if (deltaX.isNaN() || deltaY.isNaN() || !deltaX.isFinite() || !deltaY.isFinite()) return
+        cursorX = (cursorX + deltaX * 15f).coerceIn(0f, 1920f)
+        cursorY = (cursorY + deltaY * 15f).coerceIn(0f, 1080f)
+
+        cursorParams?.let { params ->
+            params.x = cursorX.toInt()
+            params.y = cursorY.toInt()
+            handler.post {
+                try {
+                    cursorView?.let { v -> windowManager.updateViewLayout(v, params) }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    private fun onSingleTap() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val singleTapAction = prefs.getString(KEY_SINGLE_TAP_ACTION, SINGLE_TAP_ACTION_CLICK) ?: SINGLE_TAP_ACTION_CLICK
+        handler.post {
+            cursorView?.setTextColor(Color.parseColor("#FFE600"))
+            handler.postDelayed({ cursorView?.setTextColor(Color.parseColor("#00E5FF")) }, 200)
+
+            when (singleTapAction) {
+                SINGLE_TAP_ACTION_TOGGLE_HUD -> {
+                    isHudVisible = !isHudVisible
+                    overlayView?.visibility = if (isHudVisible) View.VISIBLE else View.GONE
+                }
+                SINGLE_TAP_ACTION_RECENTER -> {
+                    cursorX = 960f
+                    cursorY = 540f
+                }
+                else -> {
+                    val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
+                        putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
+                        putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
+                    }
+                    sendBroadcast(clickIntent)
+                }
+            }
         }
     }
 
@@ -362,6 +373,7 @@ class OverlayService : Service() {
             unregisterReceiver(batteryReceiver)
             unregisterReceiver(navReceiver)
             unregisterReceiver(positionReceiver)
+            unregisterReceiver(tapTriggerReceiver)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -397,5 +409,6 @@ class OverlayService : Service() {
         const val ENGINE_UDP = "UDP"
 
         const val ACTION_UPDATE_POSITION = "com.example.dexoverlay.UPDATE_POSITION"
+        const val ACTION_TRIGGER_TAP = "com.example.dexoverlay.TRIGGER_TAP"
     }
 }

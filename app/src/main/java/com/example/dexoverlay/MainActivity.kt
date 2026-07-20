@@ -72,7 +72,6 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
-        // --- Card 1: XREAL 1s System Diagnostics & Control ---
         val devCard = createCompactCard("👓 XREAL 1s DIAGNOSTICS & CONTROLS", "#00E5FF")
 
         val btnDiagnostics = Button(this).apply {
@@ -88,18 +87,6 @@ class MainActivity : Activity() {
             }
         }
         devCard.addView(btnDiagnostics)
-
-        val btnUsbPermission = Button(this).apply {
-            text = "🔑 GRANT USB PERMISSION FOR GLASSES (ENGINE 1)"
-            setBackgroundColor(Color.parseColor("#0C182B"))
-            setTextColor(Color.parseColor("#00E5FF"))
-            typeface = Typeface.MONOSPACE
-            textSize = 10f
-            setOnClickListener {
-                requestXrealUsbPermission()
-            }
-        }
-        devCard.addView(btnUsbPermission)
         rootLayout.addView(devCard)
 
         val spacer_mode = TextView(this).apply { text = " " }
@@ -425,33 +412,9 @@ class MainActivity : Activity() {
             setTextColor(Color.parseColor(borderColorHex))
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 0, 0, 6)
         }
         container.addView(cardTitle)
         return container
-    }
-
-    private fun requestXrealUsbPermission() {
-        val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
-        val deviceList = usbManager.deviceList.values
-        val match = deviceList.find { device ->
-            device.vendorId == 0x3318 || device.productId in intArrayOf(0x0436, 0x0425, 0x0429)
-        }
-        if (match != null) {
-            val intent = Intent("com.xreal.hid.USB_PERMISSION").apply {
-                setPackage(packageName)
-            }
-            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                android.app.PendingIntent.FLAG_MUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
-            } else {
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT
-            }
-            val pi = android.app.PendingIntent.getBroadcast(this, 0, intent, flags)
-            usbManager.requestPermission(match, pi)
-            Toast.makeText(this, "USB permission requested!", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "Plug in glasses first!", Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun checkAndRequestOverlayPermission() {
