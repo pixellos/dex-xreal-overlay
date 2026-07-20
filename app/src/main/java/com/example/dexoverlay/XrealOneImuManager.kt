@@ -115,8 +115,14 @@ class XrealOneImuManager(private val context: Context) {
 
                 for (i in 0 until match.interfaceCount) {
                     val intf = match.getInterface(i)
+                    // CRITICAL: ONLY claim vendor-specific control interfaces (class == 255).
+                    // Do NOT claim audio or standard HID interfaces to prevent blocking display/DeX/audio.
+                    if (intf.interfaceClass != 255) {
+                        continue
+                    }
+
                     val claimed = connection.claimInterface(intf, true)
-                    log("USB: Claimed interface $i for buttons: $claimed")
+                    log("USB: Claimed interface $i (class=255) for buttons: $claimed")
 
                     for (e in 0 until intf.endpointCount) {
                         val ep = intf.getEndpoint(e)
@@ -126,6 +132,11 @@ class XrealOneImuManager(private val context: Context) {
                                 log("USB: Listening on Endpoint 0x${Integer.toHexString(ep.address)}")
                                 while (isRunning) {
                                     val read = connection.bulkTransfer(ep, buf, buf.size, 100)
+                                    if (read < 0) {
+                                        // CRITICAL: Exit the thread immediately on error/disconnect to prevent 100% CPU usage loop!
+                                        log("USB: Read failed on Endpoint 0x${Integer.toHexString(ep.address)}, closing listener.")
+                                        break
+                                    }
                                     if (read >= 17) {
                                         if (buf[0] == 0xFD.toByte()) {
                                             val msgId = ((buf[16].toInt() and 0xFF) shl 8) or (buf[15].toInt() and 0xFF)

@@ -98,7 +98,7 @@ class MainActivity : Activity() {
         val spacerAccess = TextView(this).apply { text = " " }
         rootLayout.addView(spacerAccess)
 
-        // --- Card 2: XREAL 1s System Diagnostics & Control ---
+        // --- Card 2: XREAL 1s Diagnostics & Control ---
         val devCard = createCompactCard("👓 XREAL 1s DIAGNOSTICS & CONTROLS", "#00E5FF")
 
         val btnDiagnostics = Button(this).apply {
@@ -407,11 +407,21 @@ class MainActivity : Activity() {
             addView(rootLayout)
         }
         setContentView(scrollView)
+
+        // CRITICAL: Always auto-start the HUD service on launch if overlay permission is present, matching v6.10!
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
+            startOverlayService()
+        }
     }
 
     override fun onResume() {
         super.onResume()
         checkAndRequestAllPermissions(forceTrigger = false)
+
+        // CRITICAL: Always auto-start on resume as well to match v6.10!
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
+            startOverlayService()
+        }
     }
 
     private fun checkAndRequestAllPermissions(forceTrigger: Boolean) {
@@ -459,7 +469,7 @@ class MainActivity : Activity() {
                 requestXrealUsbPermissionDirectly(glassesDevice)
                 return
             }
-            if (hasOverlay && hasAccessibility && hasUsb) {
+            if (hasOverlay) {
                 startOverlayService()
             }
         }
