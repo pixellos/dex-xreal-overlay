@@ -21,7 +21,6 @@ import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
@@ -86,13 +85,6 @@ class OverlayService : Service() {
     private var navTraceTextView: TextView? = null
     private var windowLayoutParams: WindowManager.LayoutParams? = null
 
-    // Cursor Components (Fallback Window)
-    private var cursorRootFrame: FrameLayout? = null
-    private var cursorLayout: LinearLayout? = null
-    private var cursorIconView: TextView? = null
-    private var cursorModeLabel: TextView? = null
-    private var cursorParams: WindowManager.LayoutParams? = null
-
     // Screen dimensions (dynamically queried from target display metrics)
     private var screenWidth = 1920f
     private var screenHeight = 1080f
@@ -102,10 +94,16 @@ class OverlayService : Service() {
     private var rawCursorY = 540f
     private var cursorX = 960f
     private var cursorY = 540f
-    private var cursorMeasuredWidth = 30
-    private var cursorMeasuredHeight = 30
     private var lastImuTime = 0L
-    private var accumulatedScrollY = 0f
+
+    // Trackpad Joystick-Style Continuous Head Scroll (Volume Down Hold)
+    private var isScrollModeActive = false
+    private var scrollAnchorX = 960f
+    private var scrollAnchorY = 540f
+    private var pitchOffset = 0f
+
+    // Drag Mode (Volume Up Hold)
+    private var isDragModeActive = false
 
     // In-memory Preference Caching (avoid disk SharedPreferences reads per IMU frame)
     @Volatile private var cachedSensitivity = 0.45f
@@ -114,15 +112,8 @@ class OverlayService : Service() {
     private val filterX = OneEuroFilter(minCutoff = 0.8f, beta = 0.007f)
     private val filterY = OneEuroFilter(minCutoff = 0.8f, beta = 0.007f)
 
-    // Scroll mode (holding Volume Down + tilting head)
-    private var isScrollModeActive = false
-
-    // Drag mode (holding Volume Up + tilting head)
-    private var isDragModeActive = false
-
     private var imuManager: XrealOneImuManager? = null
     private var isNavActive = false
-    private var isHudVisible = true
 
     private val handler = Handler(Looper.getMainLooper())
     private val clockRunnable = object : Runnable {
@@ -132,8 +123,30 @@ class OverlayService : Service() {
         }
     }
 
-    private val hideModeLabelRunnable = Runnable {
-        cursorModeLabel?.visibility = View.GONE
+    // 30Hz Trackpad Joystick Continuous Scroll Loop
+    private val continuousScrollRunnable = object : Runnable {
+        override fun run() {
+            if (isScrollModeActive) {
+                val absOffset = Math.abs(pitchOffset)
+                // Fire scroll whenever pitch tilt exceeds tiny deadzone (0.05 = very sensitive)
+                if (absOffset > 0.05f) {
+                    val scrollDelta = pitchOffset * 20f  // amplify pitch tilt to scroll delta
+                    val acc = HeadCursorAccessibilityService.instance
+                    if (acc != null) {
+                        acc.performDirectScroll(scrollAnchorX, scrollAnchorY, scrollDelta)
+                    } else {
+                        val scrollIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_SCROLL).apply {
+                            setPackage(packageName)
+                            putExtra(HeadCursorAccessibilityService.EXTRA_X, scrollAnchorX)
+                            putExtra(HeadCursorAccessibilityService.EXTRA_Y, scrollAnchorY)
+                            putExtra(HeadCursorAccessibilityService.EXTRA_SCROLL_DELTA_Y, scrollDelta)
+                        }
+                        sendBroadcast(scrollIntent)
+                    }
+                }
+                handler.postDelayed(this, 33) // ~30Hz smooth continuous scroll pulse
+            }
+        }
     }
 
     // Battery Monitor Receiver
@@ -222,7 +235,21 @@ class OverlayService : Service() {
                     toggleMouseMode()
                 }
                 HeadCursorAccessibilityService.ACTION_SCROLL_MODE_CHANGED -> {
-                    isScrollModeActive = intent.getBooleanExtra(HeadCursorAccessibilityService.EXTRA_IS_SCROLLING, false)
+                    val newScrollState = intent.getBooleanExtra(HeadCursorAccessibilityService.EXTRA_IS_SCROLLING, false)
+                    if (newScrollState && !isScrollModeActive) {
+                        isScrollModeActive = true
+                        scrollAnchorX = cursorX
+                        scrollAnchorY = cursorY
+                        pitchOffset = 0f
+                        handler.removeCallbacks(continuousScrollRunnable)
+                        handler.post(continuousScrollRunnable)
+                        LogBuffer.add("OVERLAY: Trackpad Scroll Mode ACTIVATED at anchor ($scrollAnchorX, $scrollAnchorY)")
+                    } else if (!newScrollState && isScrollModeActive) {
+                        isScrollModeActive = false
+                        pitchOffset = 0f
+                        handler.removeCallbacks(continuousScrollRunnable)
+                        LogBuffer.add("OVERLAY: Trackpad Scroll Mode DEACTIVATED")
+                    }
                 }
                 HeadCursorAccessibilityService.ACTION_DRAG_MODE_CHANGED -> {
                     isDragModeActive = intent.getBooleanExtra(HeadCursorAccessibilityService.EXTRA_IS_DRAGGING, false)
@@ -272,11 +299,9 @@ class OverlayService : Service() {
         }
 
         setupOverlayWindow()
-        
-        HeadCursorAccessibilityService.instance?.setupCrosshairOverlay()
-        if (HeadCursorAccessibilityService.instance == null) {
-            setupHeadTrackedCursor()
-        }
+        // NOTE: Do NOT call setupCrosshairOverlay() here.
+        // HeadCursorAccessibilityService.onServiceConnected() calls it itself.
+        // Calling it again from here creates duplicate crosshair windows.
         initImuDrivers()
     }
 
@@ -385,164 +410,18 @@ class OverlayService : Service() {
         handler.post(clockRunnable)
     }
 
-    private fun setupHeadTrackedCursor() {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, true)
-        if (!enableHeadCursor) return
-
-        val rootFrame = FrameLayout(this).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            visibility = View.VISIBLE
-        }
-
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setBackgroundColor(Color.TRANSPARENT)
-        }
-
-        cursorIconView = TextView(this).apply {
-            text = "⌖"
-            textSize = 28f
-            setTextColor(Color.parseColor("#00E5FF"))
-            typeface = Typeface.DEFAULT_BOLD
-            setShadowLayer(8f, 0f, 0f, Color.parseColor("#00FFFF"))
-            gravity = Gravity.CENTER
-        }
-        container.addView(cursorIconView)
-
-        cursorMeasuredWidth = 40
-        cursorMeasuredHeight = 40
-
-        cursorModeLabel = TextView(this).apply {
-            textSize = 10f
-            setTextColor(Color.parseColor("#FFE600"))
-            typeface = Typeface.MONOSPACE
-            setTypeface(typeface, Typeface.BOLD)
-            setShadowLayer(6f, 0f, 0f, Color.parseColor("#88FFE600"))
-            visibility = View.GONE
-            setPadding(0, 4, 0, 0)
-        }
-        container.addView(cursorModeLabel)
-
-        container.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
-            val w = right - left
-            val h = bottom - top
-            if (w > 0 && h > 0) {
-                cursorMeasuredWidth = w
-                cursorMeasuredHeight = h
-                updateCursorViewPosition()
-            }
-        }
-
-        val childParams = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-        }
-        rootFrame.addView(container, childParams)
-
-        cursorLayout = container
-        cursorRootFrame = rootFrame
-
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            } else {
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE
-            },
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 0
-            y = 0
-        }
-        cursorParams = params
-
-        try {
-            windowManager.addView(cursorRootFrame, cursorParams)
-            updateCursorViewPosition()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    /** Fast GPU hardware-accelerated translation update across 100% full screen area. */
-    private fun updateCursorViewPosition() {
-        val view = cursorLayout ?: return
-        val halfW = if (cursorMeasuredWidth > 0) cursorMeasuredWidth / 2f else 15f
-        val halfH = if (cursorMeasuredHeight > 0) cursorMeasuredHeight / 2f else 15f
-        view.translationX = cursorX - halfW
-        view.translationY = cursorY - halfH
-    }
-
-    private fun getCursorIconForCurrentMode(): String {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val mouseModeEnabled = prefs.getBoolean(KEY_MOUSE_MODE_ENABLED, true)
-        if (!mouseModeEnabled) return "❌"
-        return "⌖"
-    }
-
-    private fun getCursorColorForCurrentMode(): Int {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val mouseModeEnabled = prefs.getBoolean(KEY_MOUSE_MODE_ENABLED, true)
-        if (!mouseModeEnabled) return Color.parseColor("#FF0055")
-        return Color.parseColor("#00E5FF")
-    }
-
-    private fun updateCursorAppearance() {
-        handler.post {
-            cursorIconView?.text = getCursorIconForCurrentMode()
-            val color = getCursorColorForCurrentMode()
-            cursorIconView?.setTextColor(color)
-            cursorIconView?.setShadowLayer(4f, 0f, 0f, color)
-        }
-    }
-
     private fun toggleMouseMode() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val current = prefs.getBoolean(KEY_MOUSE_MODE_ENABLED, true)
         val next = !current
         prefs.edit().putBoolean(KEY_MOUSE_MODE_ENABLED, next).apply()
 
-        handler.post {
-            cursorModeLabel?.visibility = View.VISIBLE
-            handler.removeCallbacks(hideModeLabelRunnable)
-
-            HeadCursorAccessibilityService.instance?.setCursorVisible(next)
-
-            if (next) {
-                cursorRootFrame?.visibility = View.VISIBLE
-                cursorModeLabel?.text = "🖱️"
-                cursorModeLabel?.setTextColor(Color.parseColor("#00FF66"))
-                updateCursorAppearance()
-                handler.postDelayed(hideModeLabelRunnable, 2000)
-            } else {
-                cursorModeLabel?.text = "❌"
-                cursorModeLabel?.setTextColor(Color.parseColor("#FF0055"))
-                cursorIconView?.text = "❌"
-                cursorIconView?.setTextColor(Color.parseColor("#FF0055"))
-                cursorIconView?.setShadowLayer(4f, 0f, 0f, Color.parseColor("#FF0055"))
-                handler.postDelayed({
-                    cursorRootFrame?.visibility = View.GONE
-                }, 2000)
-            }
-        }
-
+        HeadCursorAccessibilityService.instance?.setCursorVisible(next)
         sendBroadcast(Intent("com.example.dexoverlay.REFRESH_UI").apply { setPackage(packageName) })
     }
 
     private fun executeAction(actionName: String) {
         handler.post {
-            cursorIconView?.setTextColor(Color.parseColor("#FFFFFF"))
-            handler.postDelayed({ cursorIconView?.setTextColor(getCursorColorForCurrentMode()) }, 150)
-
             when (actionName) {
                 ACTION_VAL_LEFT_CLICK -> {
                     val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
@@ -576,7 +455,6 @@ class OverlayService : Service() {
         lastImuTime = 0L
 
         imuManager = XrealOneImuManager(this).apply {
-            // Safely dispatch IMU callbacks to Main UI thread Handler to avoid UI Thread single-thread violations
             onHeadMoveListener = { dx, dy ->
                 handler.post { onHeadMove(dx, dy) }
             }
@@ -615,34 +493,20 @@ class OverlayService : Service() {
         val sensitivity = cachedSensitivity
         val strategy = cachedStrategy
 
-        // 100% Reliable Continuous Volume Down Head Scroll Drag
+        // Trackpad Joystick-Style Continuous Head Scroll (Volume Down Hold)
         if (isScrollModeActive) {
-            accumulatedScrollY += deltaY * 35f * sensitivity
+            // Freeze cursor at anchor - head tilt drives scroll speed, not cursor movement
+            cursorX = scrollAnchorX
+            cursorY = scrollAnchorY
 
-            val accService = HeadCursorAccessibilityService.instance
-            if (accService != null) {
-                accService.updateCursorPosition(cursorX, cursorY)
-            } else {
-                updateCursorViewPosition()
-            }
+            // pitchOffset = current tilt deflection from neutral (like a joystick axis).
+            // We blend the new delta in so it feels like a spring-loaded joystick:
+            // tilting further increases scroll speed, returning to level stops it.
+            // We accumulate and then DECAY toward the fresh delta (joystick feel).
+            pitchOffset = pitchOffset * 0.6f + deltaY * sensitivity * 3.0f
 
-            if (Math.abs(accumulatedScrollY) >= 12f) {
-                val scrollDelta = accumulatedScrollY
-                accumulatedScrollY = 0f
-
-                val acc = HeadCursorAccessibilityService.instance
-                if (acc != null) {
-                    acc.performDirectScroll(cursorX, cursorY, scrollDelta)
-                } else {
-                    val scrollIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_SCROLL).apply {
-                        setPackage(packageName)
-                        putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
-                        putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
-                        putExtra(HeadCursorAccessibilityService.EXTRA_SCROLL_DELTA_Y, scrollDelta)
-                    }
-                    sendBroadcast(scrollIntent)
-                }
-            }
+            // Keep crosshair locked at scroll anchor
+            HeadCursorAccessibilityService.instance?.updateCursorPosition(scrollAnchorX, scrollAnchorY)
             return
         }
 
@@ -667,13 +531,8 @@ class OverlayService : Service() {
             cursorY = rawCursorY
         }
 
-        // Update top-most TYPE_ACCESSIBILITY_OVERLAY crosshair via AccessibilityService (0ms in-process)
-        val accService = HeadCursorAccessibilityService.instance
-        if (accService != null) {
-            accService.updateCursorPosition(cursorX, cursorY)
-        } else {
-            updateCursorViewPosition()
-        }
+        // Update single top-most TYPE_ACCESSIBILITY_OVERLAY crosshair via AccessibilityService (0ms in-process)
+        HeadCursorAccessibilityService.instance?.updateCursorPosition(cursorX, cursorY)
 
         if (isDragModeActive) {
             val dragIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_DRAG).apply {
@@ -728,9 +587,6 @@ class OverlayService : Service() {
         }
         if (overlayView != null) {
             windowManager.removeView(overlayView)
-        }
-        if (cursorRootFrame != null) {
-            try { windowManager.removeView(cursorRootFrame) } catch (e: Exception) {}
         }
     }
 

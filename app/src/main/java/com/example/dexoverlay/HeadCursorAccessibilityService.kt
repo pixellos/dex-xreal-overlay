@@ -339,23 +339,24 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             return
         }
 
-        // 2. Fallback: 450-pixel touch swipe gesture in 140ms for web views & desktop windows
-        val swipeDist = 450f
-        val startY = if (isScrollDown) (y + 200f).coerceAtMost(2000f) else (y - 200f).coerceAtLeast(100f)
-        val endY = if (isScrollDown) (startY - swipeDist).coerceAtLeast(100f) else (startY + swipeDist).coerceAtMost(2000f)
+        // 2. Fallback: short 120-pixel touch swipe gesture in 50ms (works at 30Hz continuous rate)
+        // Scroll down = finger moves UP (startY > endY), scroll up = finger moves DOWN
+        val swipeDist = 120f
+        val startY = if (isScrollDown) (y + 50f).coerceAtMost(1900f) else (y - 50f).coerceAtLeast(100f)
+        val endY   = if (isScrollDown) (startY - swipeDist).coerceAtLeast(100f) else (startY + swipeDist).coerceAtMost(1900f)
 
         val path = Path().apply {
             moveTo(x, startY)
             lineTo(x, endY)
         }
-        val stroke = GestureDescription.StrokeDescription(path, 0, 140L)
+        val stroke = GestureDescription.StrokeDescription(path, 0, 50L)
         val gesture = GestureDescription.Builder().apply {
             addStroke(stroke)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setDisplayId(targetDisplayId)
         }.build()
 
         val handled = dispatchGesture(gesture, null, null)
-        log("ACCESSIBILITY: Dispatched 140ms scroll gesture from $startY to $endY at x=$x → handled=$handled")
+        log("ACCESSIBILITY: Dispatched 50ms scroll gesture from $startY to $endY at x=$x → handled=$handled")
     }
 
     private fun tryNodeScroll(x: Float, y: Float, scrollDown: Boolean): Boolean {
