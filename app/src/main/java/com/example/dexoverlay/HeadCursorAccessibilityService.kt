@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -169,34 +170,34 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     }
 
     fun setupCrosshairOverlay() {
-        if (cursorRootFrame != null) return
         mainHandler.post {
             try {
                 val wm = DeXDisplayHelper.getDeXWindowManager(this)
                 windowManager = wm
 
-                val prefs = getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
-                val mouseModeEnabled = prefs.getBoolean(OverlayService.KEY_MOUSE_MODE_ENABLED, true)
-
                 val rootFrame = FrameLayout(this).apply {
                     setBackgroundColor(Color.TRANSPARENT)
-                    visibility = if (mouseModeEnabled) View.VISIBLE else View.GONE
+                    visibility = View.VISIBLE
                 }
 
                 val container = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.CENTER_HORIZONTAL
+                    gravity = Gravity.CENTER
                     setBackgroundColor(Color.TRANSPARENT)
                 }
 
                 cursorIconView = TextView(this).apply {
                     text = "⌖"
-                    textSize = 14f
+                    textSize = 28f
                     setTextColor(Color.parseColor("#00E5FF"))
-                    setShadowLayer(4f, 0f, 0f, Color.parseColor("#00E5FF"))
+                    typeface = Typeface.DEFAULT_BOLD
+                    setShadowLayer(8f, 0f, 0f, Color.parseColor("#00FFFF"))
                     gravity = Gravity.CENTER
                 }
                 container.addView(cursorIconView)
+
+                cursorMeasuredWidth = 40
+                cursorMeasuredHeight = 40
 
                 container.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
                     val w = right - left
@@ -218,7 +219,6 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                 cursorLayout = container
                 cursorRootFrame = rootFrame
 
-                // TYPE_ACCESSIBILITY_OVERLAY sits at top z-index, rendering ABOVE system popups, Start Menu & Taskbars
                 val params = WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
                     WindowManager.LayoutParams.MATCH_PARENT,
@@ -234,7 +234,8 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                 }
 
                 wm.addView(cursorRootFrame, params)
-                log("ACCESSIBILITY: Top-most crosshair overlay created with TYPE_ACCESSIBILITY_OVERLAY")
+                updateCursorPosition(960f, 540f)
+                log("ACCESSIBILITY: Bright 28f Neon Cyan Crosshair Overlay created with TYPE_ACCESSIBILITY_OVERLAY")
             } catch (e: Exception) {
                 log("ACCESSIBILITY: Error setting up accessibility crosshair overlay: ${e.message}")
             }

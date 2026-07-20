@@ -388,29 +388,31 @@ class OverlayService : Service() {
     private fun setupHeadTrackedCursor() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, true)
-        val mouseModeEnabled = prefs.getBoolean(KEY_MOUSE_MODE_ENABLED, true)
         if (!enableHeadCursor) return
 
         val rootFrame = FrameLayout(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
-            visibility = if (mouseModeEnabled) View.VISIBLE else View.GONE
+            visibility = View.VISIBLE
         }
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
+            gravity = Gravity.CENTER
             setBackgroundColor(Color.TRANSPARENT)
         }
 
-        // Empty Outline Crosshair Icon (1/2 size = 14f)
         cursorIconView = TextView(this).apply {
             text = "⌖"
-            textSize = 14f
-            setTextColor(getCursorColorForCurrentMode())
-            setShadowLayer(4f, 0f, 0f, getCursorColorForCurrentMode())
+            textSize = 28f
+            setTextColor(Color.parseColor("#00E5FF"))
+            typeface = Typeface.DEFAULT_BOLD
+            setShadowLayer(8f, 0f, 0f, Color.parseColor("#00FFFF"))
             gravity = Gravity.CENTER
         }
         container.addView(cursorIconView)
+
+        cursorMeasuredWidth = 40
+        cursorMeasuredHeight = 40
 
         cursorModeLabel = TextView(this).apply {
             textSize = 10f
