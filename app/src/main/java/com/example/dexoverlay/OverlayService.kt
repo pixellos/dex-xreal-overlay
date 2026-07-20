@@ -487,6 +487,7 @@ class OverlayService : Service() {
 
             when (actionName) {
                 ACTION_VAL_LEFT_CLICK -> {
+                    clickStabilizeUntilTime = System.currentTimeMillis() + 300L
                     val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
                         setPackage(packageName)
                         putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
@@ -497,6 +498,7 @@ class OverlayService : Service() {
                     sendBroadcast(clickIntent)
                 }
                 ACTION_VAL_RIGHT_CLICK -> {
+                    clickStabilizeUntilTime = System.currentTimeMillis() + 300L
                     val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
                         setPackage(packageName)
                         putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
@@ -532,8 +534,14 @@ class OverlayService : Service() {
         }
     }
 
+    private var clickStabilizeUntilTime = 0L
+
     private fun onHeadMove(deltaX: Float, deltaY: Float) {
         if (deltaX.isNaN() || deltaY.isNaN() || !deltaX.isFinite() || !deltaY.isFinite()) return
+
+        // 1. Anti-Jitter Rule: Freeze crosshair during/immediately after clicking (stabilizes button presses)
+        val now = System.currentTimeMillis()
+        if (now < clickStabilizeUntilTime) return
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val sensitivity = prefs.getFloat(KEY_HEAD_SENSITIVITY, 1.0f).coerceIn(0.2f, 3.0f)
@@ -555,8 +563,17 @@ class OverlayService : Service() {
             return // Lock cursor position during scroll
         }
 
-        rawCursorX = (rawCursorX + deltaX * 15f * sensitivity).coerceIn(0f, screenWidth)
-        rawCursorY = (rawCursorY + deltaY * 15f * sensitivity).coerceIn(0f, screenHeight)
+        // 2. Anti-Jitter Rule: High acceleration bump filter (damps physical button force spikes)
+        val sqMag = deltaX * deltaX + deltaY * deltaY
+        var effectiveDx = deltaX
+        var effectiveDy = deltaY
+        if (sqMag > 0.05f) { // Spike typical of physical button press force
+            effectiveDx *= 0.15f
+            effectiveDy *= 0.15f
+        }
+
+        rawCursorX = (rawCursorX + effectiveDx * 15f * sensitivity).coerceIn(0f, screenWidth)
+        rawCursorY = (rawCursorY + effectiveDy * 15f * sensitivity).coerceIn(0f, screenHeight)
 
         if (!isCursorLoopRunning) {
             isCursorLoopRunning = true

@@ -86,10 +86,10 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     private fun performSystemClick(x: Float, y: Float, isRightClick: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
 
-        // 200ms Click Debouncer: prevents rapid button bounces from creating accidental double-clicks
+        // 60ms Click Debouncer: prevents hardware button bounces while staying ultra responsive
         val now = System.currentTimeMillis()
-        if (now - lastClickTimestamp < 200L) {
-            log("CLICK DEBOUNCE: Suppressed rapid click within 200ms (prevents double-click semantic)")
+        if (now - lastClickTimestamp < 60L) {
+            log("CLICK DEBOUNCE: Suppressed rapid click within 60ms")
             return
         }
         lastClickTimestamp = now
@@ -102,12 +102,12 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Real Touch Gesture Simulation
+        // Real Touch Gesture Simulation (10ms tap for instant responsiveness)
         val targetDisplay = DeXDisplayHelper.getTargetDisplay(this)
         val targetDisplayId = targetDisplay.displayId
 
         val path = Path().apply { moveTo(x, y) }
-        val duration = if (isRightClick) 1000L else 50L
+        val duration = if (isRightClick) 1000L else 10L // 10ms stroke for ultra-fast, snappy response
         val stroke = GestureDescription.StrokeDescription(path, 0, duration)
         val gesture = GestureDescription.Builder().apply {
             addStroke(stroke)
