@@ -518,15 +518,16 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     isVolDownHeld = true
                     isVolDownLongPressedTriggered = false
 
-                    // 3s hold → toggle mouse mode
+                    // 3s hold → toggle mouse mode (safety valve)
                     mainHandler.removeCallbacks(volDownLongPressRunnable)
                     mainHandler.postDelayed(volDownLongPressRunnable, 3000L)
 
-                    // Immediately activate scroll mode on press
-                    if (volDownHoldAction == OverlayService.ACTION_VAL_SCROLL) {
-                        isScrollModeLatched = true
-                        notifyScrollMode(true)
-                        log("KEY INTERCEPT: Vol Down HOLD START → Scroll mode ON ▶")
+                    if (volDownHoldAction == OverlayService.ACTION_VAL_SCROLL && !isVolDownLongPressedTriggered) {
+                        // TOGGLE: press once = scroll ON, press again = scroll OFF
+                        val scrollNowActive = !isScrollModeLatched
+                        isScrollModeLatched = scrollNowActive
+                        notifyScrollMode(scrollNowActive)
+                        log("KEY INTERCEPT: Vol Down → Scroll ${if (scrollNowActive) "ON ▶" else "OFF ■"}")
                     }
                 }
                 if (mouseModeEnabled) return true
@@ -534,37 +535,28 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                 isVolDownHeld = false
                 mainHandler.removeCallbacks(volDownLongPressRunnable)
 
-                // Stop scroll on release
-                if (isScrollModeLatched) {
-                    isScrollModeLatched = false
-                    notifyScrollMode(false)
-                    log("KEY INTERCEPT: Vol Down HOLD END → Scroll mode OFF ■")
-                }
-
-                // Count taps for multi-tap gestures (4x = crosshair toggle)
-                mainHandler.removeCallbacks(volDownTapRunnable)
+                // Count quick taps for 4x crosshair toggle
                 val now = System.currentTimeMillis()
-                if (now - lastVolDownTapTime < 350L) {
+                if (now - lastVolDownTapTime < 400L) {
                     volDownTapCount++
                 } else {
                     volDownTapCount = 1
                 }
                 lastVolDownTapTime = now
 
-                val quadAction = prefs.getString(OverlayService.KEY_VOL_DOWN_QUAD_ACTION, OverlayService.ACTION_VAL_TOGGLE_MOUSE)
-                    ?: OverlayService.ACTION_VAL_TOGGLE_MOUSE
-
                 if (volDownTapCount == 4) {
                     volDownTapCount = 0
-                    if (quadAction == OverlayService.ACTION_VAL_TOGGLE_MOUSE) {
-                        log("KEY INTERCEPT: Vol Down 4x → Toggle Crosshair ON/OFF")
-                        sendBroadcast(Intent(ACTION_TOGGLE_MOUSE_MODE).apply { setPackage(packageName) })
+                    // 4 quick taps → toggle crosshair visibility
+                    log("KEY INTERCEPT: Vol Down 4× → Toggle Crosshair ON/OFF")
+                    sendBroadcast(Intent(ACTION_TOGGLE_MOUSE_MODE).apply { setPackage(packageName) })
+                    // Also turn off scroll if active
+                    if (isScrollModeLatched) {
+                        isScrollModeLatched = false
+                        notifyScrollMode(false)
                     }
-                    isVolDownLongPressedTriggered = false
                     return true
                 }
 
-                isVolDownLongPressedTriggered = false
                 if (mouseModeEnabled) return true
             }
             return false
