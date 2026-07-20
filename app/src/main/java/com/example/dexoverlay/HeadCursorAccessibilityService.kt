@@ -55,9 +55,21 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     private var hasDraggedDuringVolUp = false
     private var volUpPressTime = 0L
 
-    // Volume Down triple click state
+    // Volume Down multi-click state
     private var volDownTapCount = 0
     private var lastVolDownTapTime = 0L
+    private val volDownTapRunnable = Runnable {
+        if (volDownTapCount == 3) {
+            volDownTapCount = 0
+            val prefs = getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
+            val tripleAction = prefs.getString(OverlayService.KEY_VOL_DOWN_TRIPLE_ACTION, OverlayService.ACTION_VAL_HOME)
+                ?: OverlayService.ACTION_VAL_HOME
+            if (tripleAction == OverlayService.ACTION_VAL_HOME) {
+                log("KEY INTERCEPT: Vol Down 3x TRIPLE CLICK → Send GLOBAL_ACTION_HOME")
+                performGlobalAction(GLOBAL_ACTION_HOME)
+            }
+        }
+    }
 
     private fun notifyScrollMode(isScrolling: Boolean) {
         val intent = Intent(ACTION_SCROLL_MODE_CHANGED).apply {
@@ -240,6 +252,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         instance = null
         try { unregisterReceiver(clickReceiver) } catch (e: Exception) {}
         mainHandler.removeCallbacks(volDownLongPressRunnable)
+        mainHandler.removeCallbacks(volDownTapRunnable)
         if (cursorRootFrame != null && windowManager != null) {
             try { windowManager?.removeView(cursorRootFrame) } catch (e: Exception) {}
         }
@@ -468,6 +481,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     notifyScrollMode(false)
                 }
 
+                mainHandler.removeCallbacks(volDownTapRunnable)
                 val now = System.currentTimeMillis()
                 if (now - lastVolDownTapTime < 350L) {
                     volDownTapCount++
@@ -476,17 +490,22 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                 }
                 lastVolDownTapTime = now
 
-                val tripleAction = prefs.getString(OverlayService.KEY_VOL_DOWN_TRIPLE_ACTION, OverlayService.ACTION_VAL_HOME)
-                    ?: OverlayService.ACTION_VAL_HOME
+                val quadAction = prefs.getString(OverlayService.KEY_VOL_DOWN_QUAD_ACTION, OverlayService.ACTION_VAL_TOGGLE_MOUSE)
+                    ?: OverlayService.ACTION_VAL_TOGGLE_MOUSE
 
-                if (volDownTapCount == 3) {
+                if (volDownTapCount == 4) {
                     volDownTapCount = 0
-                    if (tripleAction == OverlayService.ACTION_VAL_HOME) {
-                        log("KEY INTERCEPT: Vol Down 3x TRIPLE CLICK → Send GLOBAL_ACTION_HOME")
-                        performGlobalAction(GLOBAL_ACTION_HOME)
+                    if (quadAction == OverlayService.ACTION_VAL_TOGGLE_MOUSE) {
+                        log("KEY INTERCEPT: Vol Down 4x QUADRUPLE CLICK → Toggle Mouse Mode / Crosshair ON/OFF")
+                        sendBroadcast(Intent(ACTION_TOGGLE_MOUSE_MODE).apply { setPackage(packageName) })
                     }
                     hasScrolledDuringVolDown = false
                     isVolDownLongPressedTriggered = false
+                    return true
+                }
+
+                if (volDownTapCount == 3) {
+                    mainHandler.postDelayed(volDownTapRunnable, 250L)
                     return true
                 }
 

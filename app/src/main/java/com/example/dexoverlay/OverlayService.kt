@@ -683,6 +683,7 @@ class OverlayService : Service() {
         const val KEY_VOL_DOWN_ACTION = "vol_down_action"
         const val KEY_VOL_DOWN_HOLD_ACTION = "vol_down_hold_action"
         const val KEY_VOL_DOWN_TRIPLE_ACTION = "vol_down_triple_action"
+        const val KEY_VOL_DOWN_QUAD_ACTION = "vol_down_quad_action"
         const val KEY_MOUSE_MODE_ENABLED = "mouse_mode_enabled"
 
         const val KEY_HEAD_SENSITIVITY = "head_sensitivity"
@@ -695,6 +696,7 @@ class OverlayService : Service() {
         const val ACTION_VAL_RIGHT_CLICK = "RIGHT_CLICK"
         const val ACTION_VAL_SCROLL = "SCROLL"
         const val ACTION_VAL_HOME = "HOME"
+        const val ACTION_VAL_TOGGLE_MOUSE = "TOGGLE_MOUSE"
         const val ACTION_VAL_NONE = "NONE"
 
         const val POS_TOP_RIGHT = "TOP_RIGHT"

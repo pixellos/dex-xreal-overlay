@@ -162,6 +162,19 @@ class MainActivity : Activity() {
             restartOverlay()
         }
         mapperCard.addView(rgTriple)
+        mapperCard.addView(gap())
+
+        val quadActions = listOf(
+            OverlayService.ACTION_VAL_TOGGLE_MOUSE to "Toggle Head Cursor ON/OFF (Crosshair Toggle)",
+            OverlayService.ACTION_VAL_NONE         to "None (disabled)"
+        )
+        mapperCard.addView(label("Volume Down Quadruple-Click Action:", YELLOW, 11f))
+        val rgQuad = radioGroup(quadActions,
+            prefs.getString(OverlayService.KEY_VOL_DOWN_QUAD_ACTION, OverlayService.ACTION_VAL_TOGGLE_MOUSE) ?: "") { chosen ->
+            prefs.edit().putString(OverlayService.KEY_VOL_DOWN_QUAD_ACTION, chosen).apply()
+            restartOverlay()
+        }
+        mapperCard.addView(rgQuad)
 
         root.addView(mapperCard)
         root.addView(gap())
