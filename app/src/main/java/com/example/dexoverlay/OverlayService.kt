@@ -28,101 +28,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/**
- * Adaptive Jerk & Acceleration Spike Suppressor.
- * Clamps sudden acceleration spikes (involuntary head twitches, tremors, physical button bumps)
- * while preserving 100% 1-to-1 pixel precision for smooth, deliberate head movements.
- */
-class AdaptiveJerkFilter(
-    var maxAccel: Float = 3500f // Max allowed angular acceleration (px/s^2) before shake-damping kicks in
-) {
-    private var lastVelX = 0f
-    private var lastVelY = 0f
-    private var tPrev: Long? = null
-
-    fun filter(dx: Float, dy: Float, timestampMs: Long): Pair<Float, Float> {
-        if (tPrev == null) {
-            tPrev = timestampMs
-            return Pair(dx, dy)
-        }
-        val dt = ((timestampMs - tPrev!!) / 1000.0f).coerceIn(0.001f, 0.1f)
-        tPrev = timestampMs
-
-        val targetVelX = dx / dt
-        val targetVelY = dy / dt
-
-        val accelX = (targetVelX - lastVelX) / dt
-        val accelY = (targetVelY - lastVelY) / dt
-
-        val clampedAccelX = accelX.coerceIn(-maxAccel, maxAccel)
-        val clampedAccelY = accelY.coerceIn(-maxAccel, maxAccel)
-
-        val finalVelX = lastVelX + clampedAccelX * dt
-        val finalVelY = lastVelY + clampedAccelY * dt
-
-        lastVelX = finalVelX
-        lastVelY = finalVelY
-
-        return Pair(finalVelX * dt, finalVelY * dt)
-    }
-
-    fun reset() {
-        lastVelX = 0f
-        lastVelY = 0f
-        tPrev = null
-    }
-}
-
-/**
- * Industry-standard 1€ (One Euro) Filter for adaptive head-tracking jitter suppression.
- */
-class OneEuroFilter(
-    var minCutoff: Float = 0.8f,   // Cutoff frequency at rest (Hz) — lower = smoother/zero jitter
-    var beta: Float = 0.007f,      // Velocity response slope — higher = zero lag on quick movement
-    var dCutoff: Float = 1.0f      // Derivative cutoff frequency (Hz)
-) {
-    private var xPrev: Float? = null
-    private var dxPrev: Float = 0.0f
-    private var tPrev: Long? = null
-
-    private fun alpha(cutoff: Float, dt: Float): Float {
-        val tau = 1.0f / (2.0f * Math.PI.toFloat() * cutoff)
-        return 1.0f / (1.0f + tau / dt)
-    }
-
-    fun filter(x: Float, timestampMs: Long): Float {
-        if (tPrev == null || xPrev == null) {
-            xPrev = x
-            tPrev = timestampMs
-            dxPrev = 0.0f
-            return x
-        }
-
-        val dt = ((timestampMs - tPrev!!) / 1000.0f).coerceIn(0.001f, 0.1f)
-        tPrev = timestampMs
-
-        // Estimate velocity (derivative)
-        val dx = (x - xPrev!!) / dt
-        val aD = alpha(dCutoff, dt)
-        val edx = aD * dx + (1.0f - aD) * dxPrev
-        dxPrev = edx
-
-        // Dynamic cutoff frequency based on velocity magnitude
-        val cutoff = minCutoff + beta * Math.abs(edx)
-        val a = alpha(cutoff, dt)
-
-        val xHat = a * x + (1.0f - a) * xPrev!!
-        xPrev = xHat
-        return xHat
-    }
-
-    fun reset() {
-        xPrev = null
-        tPrev = null
-        dxPrev = 0.0f
-    }
-}
-
 class OverlayService : Service() {
 
     private lateinit var windowManager: WindowManager
@@ -143,17 +48,13 @@ class OverlayService : Service() {
     private var screenWidth = 1920f
     private var screenHeight = 1080f
 
-    // Cursor Movement & Filtering (Adaptive Jerk Suppressor + 1Euro Filter)
+    // Direct Unfiltered Direct Cursor Movement
     private var rawCursorX = 960f
     private var rawCursorY = 540f
     private var cursorX = 960f
     private var cursorY = 540f
     private var cursorMeasuredWidth = 30
     private var cursorMeasuredHeight = 30
-
-    private val jerkFilter = AdaptiveJerkFilter(maxAccel = 3500f)
-    private val filterX = OneEuroFilter(minCutoff = 0.8f, beta = 0.007f)
-    private val filterY = OneEuroFilter(minCutoff = 0.8f, beta = 0.007f)
 
     // Scroll mode (holding Volume Down + tilting head)
     private var isScrollModeActive = false
@@ -605,10 +506,6 @@ class OverlayService : Service() {
         val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, true)
         if (!enableHeadCursor) return
 
-        jerkFilter.reset()
-        filterX.reset()
-        filterY.reset()
-
         imuManager = XrealOneImuManager(this).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             start()
@@ -640,21 +537,12 @@ class OverlayService : Service() {
         val prevX = cursorX
         val prevY = cursorY
 
-        val now = System.currentTimeMillis()
+        // Direct raw IMU motion (No filtering)
+        rawCursorX = (rawCursorX + deltaX * 15f * sensitivity).coerceIn(0f, screenWidth)
+        rawCursorY = (rawCursorY + deltaY * 15f * sensitivity).coerceIn(0f, screenHeight)
 
-        // 1. Pass raw deltas through Adaptive Jerk Filter to clamp sudden shake/twitch acceleration spikes
-        val (dampedDx, dampedDy) = jerkFilter.filter(
-            deltaX * 15f * sensitivity,
-            deltaY * 15f * sensitivity,
-            now
-        )
-
-        rawCursorX = (rawCursorX + dampedDx).coerceIn(0f, screenWidth)
-        rawCursorY = (rawCursorY + dampedDy).coerceIn(0f, screenHeight)
-
-        // 2. Pass coordinates through 1Euro Adaptive Filter for zero-jitter stationary hover & zero-lag sweeps
-        cursorX = filterX.filter(rawCursorX, now)
-        cursorY = filterY.filter(rawCursorY, now)
+        cursorX = rawCursorX
+        cursorY = rawCursorY
 
         // Update top-most TYPE_ACCESSIBILITY_OVERLAY crosshair via AccessibilityService (0ms in-process)
         val accService = HeadCursorAccessibilityService.instance

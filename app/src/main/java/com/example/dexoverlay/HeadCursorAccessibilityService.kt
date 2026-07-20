@@ -324,23 +324,30 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Fallback: 450-pixel gesture swipe over 40ms for fast fling scrolling
-        val strokeDist = if (Math.abs(deltaY) > 50f) deltaY else if (deltaY >= 0) 450f else -450f
+        // Fallback: 500-pixel gesture swipe over 180ms for reliable touch fling scrolling
+        val strokeDist = if (deltaY > 0) 500f else -500f
         val startY = y
-        val endY = (y - strokeDist).coerceIn(50f, 2100f)
+        val endY = (y - strokeDist).coerceIn(100f, 2000f)
 
         val path = Path().apply {
             moveTo(x, startY)
             lineTo(x, endY)
         }
-        val stroke = GestureDescription.StrokeDescription(path, 0, 40L)
+        val stroke = GestureDescription.StrokeDescription(path, 0, 180L)
         val gesture = GestureDescription.Builder().apply {
             addStroke(stroke)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setDisplayId(targetDisplayId)
         }.build()
 
-        val handled = dispatchGesture(gesture, null, null)
-        log("ACCESSIBILITY: Dispatched scroll gesture from $startY to $endY at x=$x → handled=$handled")
+        val handled = dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                log("ACCESSIBILITY: Scroll gesture completed successfully!")
+            }
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                log("ACCESSIBILITY: Scroll gesture cancelled by system.")
+            }
+        }, null)
+        log("ACCESSIBILITY: Dispatched 180ms scroll gesture from $startY to $endY at x=$x → handled=$handled")
     }
 
     private fun tryNodeScroll(x: Float, y: Float, scrollDown: Boolean): Boolean {
@@ -377,7 +384,14 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             if (result != null) return result
         }
 
-        return if (node.isScrollable) node else null
+        var curr: AccessibilityNodeInfo? = node
+        var depth = 0
+        while (curr != null && depth < 5) {
+            if (curr.isScrollable) return curr
+            curr = curr.parent
+            depth++
+        }
+        return null
     }
 
     private fun tryNodeClick(x: Float, y: Float): Boolean {
