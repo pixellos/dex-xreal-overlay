@@ -71,10 +71,16 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     // Volume Down hold state
     private var isVolDownHeld = false
     private var hasScrolledDuringVolDown = false
+    private var isScrollModeLatched = false   // true = scroll mode is TOGGLED ON
     private var isVolDownLongPressedTriggered = false
     private val volDownLongPressRunnable = Runnable {
         if (isVolDownHeld && !hasScrolledDuringVolDown) {
             isVolDownLongPressedTriggered = true
+            // Also cancel scroll mode if active when toggling mouse mode
+            if (isScrollModeLatched) {
+                isScrollModeLatched = false
+                notifyScrollMode(false)
+            }
             log("ACCESSIBILITY: Volume Down held 3s → Toggle Mouse Mode")
             sendBroadcast(Intent(ACTION_TOGGLE_MOUSE_MODE).apply { setPackage(packageName) })
         }
@@ -516,22 +522,14 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     hasScrolledDuringVolDown = false
                     isVolDownLongPressedTriggered = false
 
-                    // Post 3s long press runnable to toggle mouse mode
+                    // 3s long press → toggle mouse mode
                     mainHandler.removeCallbacks(volDownLongPressRunnable)
                     mainHandler.postDelayed(volDownLongPressRunnable, 3000L)
-
-                    if (volDownHoldAction == OverlayService.ACTION_VAL_SCROLL) {
-                        notifyScrollMode(true)
-                        log("KEY INTERCEPT: Vol Down DOWN → hold to scroll vertical by head pitch")
-                    }
                 }
                 if (mouseModeEnabled) return true
             } else if (action == KeyEvent.ACTION_UP) {
                 isVolDownHeld = false
                 mainHandler.removeCallbacks(volDownLongPressRunnable)
-                if (volDownHoldAction == OverlayService.ACTION_VAL_SCROLL) {
-                    notifyScrollMode(false)
-                }
 
                 mainHandler.removeCallbacks(volDownTapRunnable)
                 val now = System.currentTimeMillis()
@@ -561,13 +559,21 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     return true
                 }
 
-                if (mouseModeEnabled && !isVolDownLongPressedTriggered && !hasScrolledDuringVolDown) {
-                    log("KEY INTERCEPT: Vol Down UP → action: $volDownAction")
-                    triggerAction(volDownAction)
+                if (!isVolDownLongPressedTriggered) {
+                    if (volDownHoldAction == OverlayService.ACTION_VAL_SCROLL) {
+                        // TOGGLE scroll mode: tap once to START, tap again to STOP
+                        val scrollNowActive = !isScrollModeLatched
+                        isScrollModeLatched = scrollNowActive
+                        notifyScrollMode(scrollNowActive)
+                        hasScrolledDuringVolDown = scrollNowActive
+                        log("KEY INTERCEPT: Vol Down TAP → Scroll mode TOGGLE → ${if (scrollNowActive) "ON" else "OFF"}")
+                    } else if (mouseModeEnabled) {
+                        log("KEY INTERCEPT: Vol Down UP → action: $volDownAction")
+                        triggerAction(volDownAction)
+                    }
                 }
 
                 val consumed = mouseModeEnabled || isVolDownLongPressedTriggered || hasScrolledDuringVolDown
-                hasScrolledDuringVolDown = false
                 isVolDownLongPressedTriggered = false
                 if (consumed) return true
             }
