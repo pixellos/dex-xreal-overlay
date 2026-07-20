@@ -16,6 +16,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.View
@@ -105,6 +106,10 @@ class OverlayService : Service() {
     private var cursorMeasuredHeight = 30
     private var lastImuTime = 0L
 
+    // In-memory Preference Caching (avoid disk SharedPreferences reads per IMU frame)
+    @Volatile private var cachedSensitivity = 0.45f
+    @Volatile private var cachedStrategy = STRATEGY_LINEAR
+
     private val filterX = OneEuroFilter(minCutoff = 0.8f, beta = 0.007f)
     private val filterY = OneEuroFilter(minCutoff = 0.8f, beta = 0.007f)
 
@@ -167,6 +172,7 @@ class OverlayService : Service() {
     private val positionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_UPDATE_POSITION) {
+                reloadPreferencesCache()
                 val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 val hudScale = prefs.getFloat(KEY_SCALE, 1.0f).coerceIn(0.25f, 1.5f)
                 val xOffset = prefs.getInt(KEY_X_OFFSET, 40)
@@ -225,9 +231,16 @@ class OverlayService : Service() {
         }
     }
 
+    private fun reloadPreferencesCache() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        cachedSensitivity = prefs.getFloat(KEY_HEAD_SENSITIVITY, 0.45f).coerceIn(0.1f, 5.0f)
+        cachedStrategy = prefs.getString(KEY_MOVEMENT_STRATEGY, STRATEGY_LINEAR) ?: STRATEGY_LINEAR
+    }
+
     override fun onCreate() {
         super.onCreate()
         startForegroundServiceNotification()
+        reloadPreferencesCache()
         updateDisplayBounds()
 
         fun register(receiver: BroadcastReceiver, filter: IntentFilter) {
@@ -519,7 +532,7 @@ class OverlayService : Service() {
             }
         }
 
-        sendBroadcast(Intent("com.example.dexoverlay.REFRESH_UI"))
+        sendBroadcast(Intent("com.example.dexoverlay.REFRESH_UI").apply { setPackage(packageName) })
     }
 
     private fun executeAction(actionName: String) {
@@ -560,7 +573,10 @@ class OverlayService : Service() {
         lastImuTime = 0L
 
         imuManager = XrealOneImuManager(this).apply {
-            onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
+            // Safely dispatch IMU callbacks to Main UI thread Handler to avoid UI Thread single-thread violations
+            onHeadMoveListener = { dx, dy ->
+                handler.post { onHeadMove(dx, dy) }
+            }
             start()
         }
     }
@@ -571,34 +587,30 @@ class OverlayService : Service() {
 
         return when (strategy) {
             STRATEGY_LOG -> {
-                // Logarithmic compression for micro precision at slow speeds + fast acceleration at high speeds
                 val logVal = Math.log1p(absDelta * 10.0).toFloat()
                 sign * logVal * 15f * sensitivity
             }
             STRATEGY_NLOG -> {
-                // Negative log / power exponential: delta ^ 1.5
                 val powVal = Math.pow(absDelta.toDouble(), 1.5).toFloat()
                 sign * powVal * 25f * sensitivity
             }
             STRATEGY_DERIVATIVE -> {
-                // Velocity derivative gain: boost gain dynamically when moving fast
                 val velocity = absDelta / dt.coerceAtLeast(0.001f)
                 val gain = 1.0f + (velocity * 0.05f).coerceAtMost(3.0f)
                 sign * absDelta * gain * 15f * sensitivity
             }
             else -> {
-                // LINEAR & FILTERED base step
                 sign * absDelta * 15f * sensitivity
             }
         }
     }
 
+    /** Must be called on Main UI Thread. Uses monotonic SystemClock.elapsedRealtime() for physics dt. */
     private fun onHeadMove(deltaX: Float, deltaY: Float) {
         if (deltaX.isNaN() || deltaY.isNaN() || !deltaX.isFinite() || !deltaY.isFinite()) return
 
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val sensitivity = prefs.getFloat(KEY_HEAD_SENSITIVITY, 0.45f).coerceIn(0.1f, 5.0f)
-        val strategy = prefs.getString(KEY_MOVEMENT_STRATEGY, STRATEGY_LINEAR) ?: STRATEGY_LINEAR
+        val sensitivity = cachedSensitivity
+        val strategy = cachedStrategy
 
         // 100% Reliable Continuous Volume Down Head Scroll Drag
         if (isScrollModeActive) {
@@ -627,9 +639,9 @@ class OverlayService : Service() {
         val prevX = cursorX
         val prevY = cursorY
 
-        val now = System.currentTimeMillis()
-        val dt = if (lastImuTime != 0L) ((now - lastImuTime) / 1000f).coerceIn(0.001f, 0.1f) else 0.016f
-        lastImuTime = now
+        val nowRealtime = SystemClock.elapsedRealtime()
+        val dt = if (lastImuTime != 0L) ((nowRealtime - lastImuTime) / 1000f).coerceIn(0.001f, 0.1f) else 0.016f
+        lastImuTime = nowRealtime
 
         val stepX = transformDelta(deltaX, dt, strategy, sensitivity)
         val stepY = transformDelta(deltaY, dt, strategy, sensitivity)
@@ -638,8 +650,8 @@ class OverlayService : Service() {
         rawCursorY = (rawCursorY + stepY).coerceIn(0f, screenHeight)
 
         if (strategy == STRATEGY_FILTERED) {
-            cursorX = filterX.filter(rawCursorX, now)
-            cursorY = filterY.filter(rawCursorY, now)
+            cursorX = filterX.filter(rawCursorX, nowRealtime)
+            cursorY = filterY.filter(rawCursorY, nowRealtime)
         } else {
             cursorX = rawCursorX
             cursorY = rawCursorY
@@ -694,8 +706,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        handler.removeCallbacks(clockRunnable)
-        handler.removeCallbacks(hideModeLabelRunnable)
+        handler.removeCallbacksAndMessages(null)
         imuManager?.stop()
         try {
             unregisterReceiver(batteryReceiver)

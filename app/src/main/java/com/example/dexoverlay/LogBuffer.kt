@@ -6,6 +6,7 @@ import java.util.Locale
 
 object LogBuffer {
     private val logs = mutableListOf<String>()
+    private val dateFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
     
     @Volatile
     var totalLogsCount = 0L
@@ -13,8 +14,7 @@ object LogBuffer {
 
     @Synchronized
     fun add(msg: String) {
-        val sdf = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
-        val timestamp = sdf.format(Date())
+        val timestamp = dateFormat.format(Date())
         logs.add("[$timestamp] $msg")
         totalLogsCount++
         
