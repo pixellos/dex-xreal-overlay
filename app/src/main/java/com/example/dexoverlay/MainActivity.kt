@@ -1,16 +1,19 @@
 package com.example.dexoverlay
 
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -24,6 +27,9 @@ import android.widget.Toast
 
 class MainActivity : Activity() {
 
+    private lateinit var statusTag: TextView
+    private lateinit var btnPermissionStatus: Button
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -35,7 +41,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(28, 20, 28, 28)
-            setBackgroundColor(Color.parseColor("#03060B")) // Sleek Cyberpunk Netrunner Dark
+            setBackgroundColor(Color.parseColor("#03060B"))
         }
 
         // --- Streamlined Cyberdeck Header ---
@@ -60,10 +66,10 @@ class MainActivity : Activity() {
         }
         headerCard.addView(headerText)
 
-        val statusTag = TextView(this).apply {
-            text = "[ DEVELOPER SYSTEM ]"
+        statusTag = TextView(this).apply {
+            text = "[ PENDING ]"
             textSize = 10f
-            setTextColor(Color.parseColor("#00E5FF"))
+            setTextColor(Color.parseColor("#FF0055"))
             typeface = Typeface.MONOSPACE
         }
         headerCard.addView(statusTag)
@@ -72,6 +78,27 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
+        // --- Card 1: Upfront Access Requests ---
+        val accessCard = createCompactCard("⚡ UPFRONT SYSTEM ACCESS STATUS", "#00FF66")
+
+        btnPermissionStatus = Button(this).apply {
+            text = "🔄 SCAN & ACQUIRE ALL REQUIRED PERMISSIONS"
+            setBackgroundColor(Color.parseColor("#0C182B"))
+            setTextColor(Color.parseColor("#00FF66"))
+            typeface = Typeface.MONOSPACE
+            textSize = 11f
+            setTypeface(typeface, Typeface.BOLD)
+            setOnClickListener {
+                checkAndRequestAllPermissions(forceTrigger = true)
+            }
+        }
+        accessCard.addView(btnPermissionStatus)
+        rootLayout.addView(accessCard)
+
+        val spacerAccess = TextView(this).apply { text = " " }
+        rootLayout.addView(spacerAccess)
+
+        // --- Card 2: XREAL 1s System Diagnostics & Control ---
         val devCard = createCompactCard("👓 XREAL 1s DIAGNOSTICS & CONTROLS", "#00E5FF")
 
         val btnDiagnostics = Button(this).apply {
@@ -92,7 +119,7 @@ class MainActivity : Activity() {
         val spacer_mode = TextView(this).apply { text = " " }
         rootLayout.addView(spacer_mode)
 
-        // --- Card 2: Quick Action Selection ---
+        // --- Card 3: Quick Action Selection ---
         val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, true)
         val singleTapAction = prefs.getString(OverlayService.KEY_SINGLE_TAP_ACTION, OverlayService.SINGLE_TAP_ACTION_CLICK) ?: OverlayService.SINGLE_TAP_ACTION_CLICK
         val actionCard = createCompactCard("🔘 QUICK ACTION SELECTION", "#00E5FF")
@@ -113,7 +140,7 @@ class MainActivity : Activity() {
         actionCard.addView(cbHeadCursor)
 
         val btnAccessibility = Button(this).apply {
-            text = "👆 ENABLE ACCESSIBILITY FOR SYSTEM MOUSE CLICKS"
+            text = "👆 MANUALLY OPEN ACCESSIBILITY SYSTEM SETTINGS"
             setBackgroundColor(Color.parseColor("#0C182B"))
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -182,7 +209,7 @@ class MainActivity : Activity() {
         val spacer2 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer2)
 
-        // --- Card 3: HUD Customization (Scale & Position) ---
+        // --- Card 4: HUD Customization (Scale & Position) ---
         val currentScale = prefs.getFloat(OverlayService.KEY_SCALE, 1.0f)
         val currentPos = prefs.getString(OverlayService.KEY_POSITION, OverlayService.POS_TOP_RIGHT)
 
@@ -255,7 +282,7 @@ class MainActivity : Activity() {
         val spacer3 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer3)
 
-        // --- Card 4: Alignment Calibrator ---
+        // --- Card 5: Alignment Calibrator ---
         val xOff = prefs.getInt(OverlayService.KEY_X_OFFSET, 40)
         val yOff = prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)
 
@@ -356,15 +383,6 @@ class MainActivity : Activity() {
         rootLayout.addView(spacer4)
 
         // --- Action Buttons ---
-        val btnPermission = Button(this).apply {
-            text = "[ GRANT OVERLAY PERMISSION ]"
-            setBackgroundColor(Color.parseColor("#121B2C"))
-            setTextColor(Color.WHITE)
-            typeface = Typeface.MONOSPACE
-            setOnClickListener { checkAndRequestOverlayPermission() }
-        }
-        rootLayout.addView(btnPermission)
-
         val btnStart = Button(this).apply {
             text = "⚡ [ START CYBERPUNK HUD ]"
             setBackgroundColor(Color.parseColor("#FFE600"))
@@ -389,10 +407,94 @@ class MainActivity : Activity() {
             addView(rootLayout)
         }
         setContentView(scrollView)
+    }
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
-            startOverlayService()
+    override fun onResume() {
+        super.onResume()
+        checkAndRequestAllPermissions(forceTrigger = false)
+    }
+
+    private fun checkAndRequestAllPermissions(forceTrigger: Boolean) {
+        val hasOverlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
+        val hasAccessibility = isAccessibilityServiceEnabled(this, HeadCursorAccessibilityService::class.java)
+
+        val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+        val deviceList = usbManager.deviceList.values
+        val glassesDevice = deviceList.find { device ->
+            device.vendorId == 0x3318 || device.productId in intArrayOf(0x0436, 0x0425, 0x0429)
         }
+        val hasUsb = glassesDevice == null || usbManager.hasPermission(glassesDevice)
+
+        // Update UI status tags
+        if (hasOverlay && hasAccessibility && hasUsb) {
+            statusTag.text = "[ ACTIVE // ALL ACCESS OK ]"
+            statusTag.setTextColor(Color.parseColor("#00FF66"))
+            btnPermissionStatus.text = "✅ ALL PERMISSIONS ACQUIRED"
+            btnPermissionStatus.setBackgroundColor(Color.parseColor("#0B2213"))
+            btnPermissionStatus.setTextColor(Color.parseColor("#00FF66"))
+        } else {
+            statusTag.text = "[ PENDING AUTHORIZATION ]"
+            statusTag.setTextColor(Color.parseColor("#FF0055"))
+            btnPermissionStatus.text = "⚠️ TAP TO GRANT MISSING ACCESS"
+            btnPermissionStatus.setBackgroundColor(Color.parseColor("#2C0C12"))
+            btnPermissionStatus.setTextColor(Color.parseColor("#FF0055"))
+        }
+
+        if (forceTrigger) {
+            if (!hasOverlay) {
+                Toast.makeText(this, "Please authorize Overlay Permission", Toast.LENGTH_SHORT).show()
+                checkAndRequestOverlayPermission()
+                return
+            }
+            if (!hasAccessibility) {
+                Toast.makeText(this, "Please enable accessibility cursor driver", Toast.LENGTH_SHORT).show()
+                try {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    startActivity(intent)
+                } catch (e: Exception) {}
+                return
+            }
+            if (!hasUsb && glassesDevice != null) {
+                Toast.makeText(this, "Please authorize USB glasses connection", Toast.LENGTH_SHORT).show()
+                requestXrealUsbPermissionDirectly(glassesDevice)
+                return
+            }
+            if (hasOverlay && hasAccessibility && hasUsb) {
+                startOverlayService()
+            }
+        }
+    }
+
+    private fun isAccessibilityServiceEnabled(context: Context, service: Class<out android.accessibilityservice.AccessibilityService>): Boolean {
+        val expectedComponentName = ComponentName(context, service)
+        val enabledServicesSetting = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        val colonSplitter = TextUtils.SimpleStringSplitter(':')
+        colonSplitter.setString(enabledServicesSetting)
+        while (colonSplitter.hasNext()) {
+            val componentNameString = colonSplitter.next()
+            val enabledService = ComponentName.unflattenFromString(componentNameString)
+            if (enabledService != null && enabledService == expectedComponentName) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun requestXrealUsbPermissionDirectly(device: UsbDevice) {
+        val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+        val intent = Intent(XrealOneImuManager.ACTION_USB_PERMISSION).apply {
+            setPackage(packageName)
+        }
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            android.app.PendingIntent.FLAG_MUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        } else {
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val pi = android.app.PendingIntent.getBroadcast(this, 0, intent, flags)
+        usbManager.requestPermission(device, pi)
     }
 
     private fun createCompactCard(title: String, borderColorHex: String): LinearLayout {
@@ -412,6 +514,7 @@ class MainActivity : Activity() {
             setTextColor(Color.parseColor(borderColorHex))
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, 0, 0, 6)
         }
         container.addView(cardTitle)
         return container
