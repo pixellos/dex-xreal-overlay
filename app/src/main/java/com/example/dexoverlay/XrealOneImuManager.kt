@@ -142,72 +142,91 @@ class XrealOneImuManager(private val context: Context) {
         }
     }
 
-    // Engine 2: XREAL 1s TCP Network Client (169.254.2.1:52998 / Dynamic Subnet)
+    // Engine 2: XREAL 1s TCP Network Client (Dynamic candidate search)
     private fun runTcpNetworkEngine() {
         while (isRunning) {
-            try {
-                // Discover target IP and gateway dynamically
-                val discoveredHost = discoverTargetHost()
-                val targetPort = 52998
+            var connectedSocket: Socket? = null
+            var connectedHost = ""
+            val candidates = collectTargetHostCandidates()
 
-                val s = Socket()
-                log("Connecting to XREAL 1s TCP Service ($discoveredHost:$targetPort)...")
-                s.connect(InetSocketAddress(discoveredHost, targetPort), 3000)
-                s.soTimeout = 2000
-                tcpSocket = s
-                log("CONNECTED successfully to XREAL 1s TCP stream!")
+            log("IP candidates gathered: $candidates. Probing ports...")
 
-                val inputStream: InputStream = s.getInputStream()
-                val buffer = ByteArray(2048)
-                val accumulator = ByteBuffer.allocate(4096).order(ByteOrder.LITTLE_ENDIAN)
+            // Try connecting to candidates sequentially
+            for (host in candidates) {
+                if (!isRunning) break
+                try {
+                    val s = Socket()
+                    s.connect(InetSocketAddress(host, 52998), 1000)
+                    s.soTimeout = 2000
+                    connectedSocket = s
+                    connectedHost = host
+                    log("CONNECTED successfully to $host:52998!")
+                    break
+                } catch (e: Exception) {
+                    // Try next candidate
+                }
+            }
 
-                while (isRunning && s.isConnected && !s.isClosed) {
-                    val bytesRead = inputStream.read(buffer)
-                    if (bytesRead <= 0) break
+            if (connectedSocket != null) {
+                tcpSocket = connectedSocket
+                try {
+                    val inputStream: InputStream = connectedSocket.getInputStream()
+                    val buffer = ByteArray(2048)
+                    val accumulator = ByteBuffer.allocate(4096).order(ByteOrder.LITTLE_ENDIAN)
 
-                    accumulator.put(buffer, 0, bytesRead)
-                    accumulator.flip()
+                    while (isRunning && connectedSocket.isConnected && !connectedSocket.isClosed) {
+                        val bytesRead = inputStream.read(buffer)
+                        if (bytesRead <= 0) break
 
-                    while (accumulator.remaining() >= 134) {
-                        val startPos = accumulator.position()
-                        if (accumulator.get(startPos) == 0x28.toByte() &&
-                            accumulator.get(startPos + 1) == 0x36.toByte() &&
-                            accumulator.get(startPos + 5) == 0x80.toByte()
-                        ) {
-                            val gyroX = accumulator.getFloat(startPos + 34)
-                            val gyroY = accumulator.getFloat(startPos + 38)
+                        accumulator.put(buffer, 0, bytesRead)
+                        accumulator.flip()
 
-                            onHeadMoveListener?.invoke(gyroY * 0.5f, -gyroX * 0.5f)
+                        while (accumulator.remaining() >= 134) {
+                            val startPos = accumulator.position()
+                            if (accumulator.get(startPos) == 0x28.toByte() &&
+                                accumulator.get(startPos + 1) == 0x36.toByte() &&
+                                accumulator.get(startPos + 5) == 0x80.toByte()
+                            ) {
+                                val gyroX = accumulator.getFloat(startPos + 34)
+                                val gyroY = accumulator.getFloat(startPos + 38)
 
-                            accumulator.position(startPos + 134)
-                        } else {
-                            accumulator.position(startPos + 1)
+                                onHeadMoveListener?.invoke(gyroY * 0.5f, -gyroX * 0.5f)
+
+                                accumulator.position(startPos + 134)
+                            } else {
+                                accumulator.position(startPos + 1)
+                            }
                         }
+                        accumulator.compact()
                     }
-                    accumulator.compact()
+                } catch (e: Exception) {
+                    log("TCP read error from $connectedHost: ${e.message}")
+                } finally {
+                    try { connectedSocket.close() } catch (ex: Exception) {}
+                    tcpSocket = null
                 }
-            } catch (e: Exception) {
-                if (isRunning) {
-                    log("TCP Offline: ${e.message}. Reconnecting in 3s...")
-                    try { tcpSocket?.close() } catch (ex: Exception) {}
-                    try { Thread.sleep(3000) } catch (ie: Exception) {}
-                }
+            }
+
+            if (isRunning) {
+                log("Re-scanning and retrying TCP stream in 3s...")
+                try { Thread.sleep(3000) } catch (ie: Exception) {}
             }
         }
     }
 
-    // Dynamic Host and Routing Discovery (Zero Hardcoding)
-    private fun discoverTargetHost(): String {
+    // Dynamic Host and Routing Discovery (SELinux compliant)
+    private fun collectTargetHostCandidates(): List<String> {
+        val candidates = mutableListOf<String>()
         val prefs = context.getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
+
+        // 1. User manual override
         val customIp = prefs.getString("custom_target_host_ip", "") ?: ""
         if (customIp.trim().isNotEmpty()) {
-            log("Using custom target IP override: $customIp")
-            return customIp.trim()
+            candidates.add(customIp.trim())
+            return candidates
         }
 
-        var targetIp = "169.254.2.1" // Default fallback
-
-        // 1. Android ConnectivityManager API (SELinux Compliant)
+        // 2. ConnectivityManager Gateways (SELinux compliant)
         try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -218,47 +237,42 @@ class XrealOneImuManager(private val context: Context) {
                     if (ifaceName.contains("usb") || ifaceName.contains("rndis") || ifaceName.contains("eth") || ifaceName.contains("cdc")) {
                         for (route in linkProps.routes) {
                             val gateway = route.gateway?.hostAddress
-                            if (gateway != null && gateway != "0.0.0.0") {
-                                log("Android LinkProperties: found gateway $gateway on interface $ifaceName")
-                                return gateway
+                            if (gateway != null && gateway != "0.0.0.0" && !candidates.contains(gateway)) {
+                                candidates.add(gateway)
                             }
                         }
                     }
                 }
             }
         } catch (e: Exception) {
-            log("Android ConnectivityManager query skipped: ${e.message}")
+            log("CM candidate scan skipped: ${e.message}")
         }
 
-        // 2. Scan ARP Cache (/proc/net/arp)
+        // 3. ARP Cache (/proc/net/arp)
         try {
             BufferedReader(FileReader("/proc/net/arp")).use { reader ->
                 var line: String?
-                // Skip header
-                reader.readLine()
+                reader.readLine() // skip header
                 while (reader.readLine().also { line = it } != null) {
                     val tokens = line!!.split("\\s+".toRegex()).filter { it.isNotEmpty() }
                     if (tokens.size >= 6) {
                         val ip = tokens[0]
                         val device = tokens[5].lowercase()
                         if (device.contains("usb") || device.contains("rndis") || device.contains("eth") || device.contains("cdc")) {
-                            log("ARP Table match: found peer $ip on interface $device")
-                            targetIp = ip
-                            return targetIp
+                            if (!candidates.contains(ip)) {
+                                candidates.add(ip)
+                            }
                         }
                     }
                 }
             }
-        } catch (e: Exception) {
-            // Silently skip SELinux sandboxing blocks
-        }
+        } catch (e: Exception) {}
 
-        // 3. Scan Routing Table (/proc/net/route)
+        // 4. Routing Table (/proc/net/route)
         try {
             BufferedReader(FileReader("/proc/net/route")).use { reader ->
                 var line: String?
-                // Skip header
-                reader.readLine()
+                reader.readLine() // skip header
                 while (reader.readLine().also { line = it } != null) {
                     val tokens = line!!.split("\\s+".toRegex()).filter { it.isNotEmpty() }
                     if (tokens.size >= 3) {
@@ -268,19 +282,17 @@ class XrealOneImuManager(private val context: Context) {
                             if (gatewayHex != "00000000") {
                                 val valHex = gatewayHex.toLong(16)
                                 val ip = "${valHex and 0xFF}.${(valHex shr 8) and 0xFF}.${(valHex shr 16) and 0xFF}.${(valHex shr 24) and 0xFF}"
-                                log("Routing Table Match: found gateway $ip on interface $iface")
-                                targetIp = ip
-                                return targetIp
+                                if (!candidates.contains(ip)) {
+                                    candidates.add(ip)
+                                }
                             }
                         }
                     }
                 }
             }
-        } catch (e: Exception) {
-            // Silently skip SELinux sandboxing blocks
-        }
+        } catch (e: Exception) {}
 
-        // 4. Java NetworkInterface scanning fallback (SELinux Compliant)
+        // 5. Java NetworkInterface scanning fallback (local_ip & 0xFFFFFF00) | 0x01
         try {
             val interfaces = NetworkInterface.getNetworkInterfaces()
             while (interfaces.hasMoreElements()) {
@@ -292,23 +304,24 @@ class XrealOneImuManager(private val context: Context) {
                         val addr = addrs.nextElement()
                         if (!addr.isLoopbackAddress && addr.hostAddress.indexOf(':') < 0) {
                             val host = addr.hostAddress
-                            log("Java NetworkInterface: found address $host on interface $name")
                             val parts = host.split(".")
                             if (parts.size == 4) {
-                                targetIp = "${parts[0]}.${parts[1]}.${parts[2]}.1"
-                                log("Guessed peer host: $targetIp")
-                                return targetIp
+                                val peerIp = "${parts[0]}.${parts[1]}.${parts[2]}.1"
+                                if (!candidates.contains(peerIp)) {
+                                    candidates.add(peerIp)
+                                }
                             }
                         }
                     }
                 }
             }
-        } catch (e: Exception) {
-            log("Java NetworkInterface scanning skipped: ${e.message}")
-        }
+        } catch (e: Exception) {}
 
-        log("Using target host fallback: $targetIp")
-        return targetIp
+        // Defaults
+        if (!candidates.contains("169.254.2.1")) candidates.add("169.254.2.1")
+        if (!candidates.contains("169.254.1.1")) candidates.add("169.254.1.1")
+
+        return candidates
     }
 
     // Engine 3: External UDP Socket Listener (Port 9090)
