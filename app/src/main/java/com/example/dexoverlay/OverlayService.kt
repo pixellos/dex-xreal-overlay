@@ -29,10 +29,55 @@ import java.util.Date
 import java.util.Locale
 
 /**
+ * Adaptive Jerk & Acceleration Spike Suppressor.
+ * Clamps sudden acceleration spikes (involuntary head twitches, tremors, physical button bumps)
+ * while preserving 100% 1-to-1 pixel precision for smooth, deliberate head movements.
+ */
+class AdaptiveJerkFilter(
+    var maxAccel: Float = 3500f // Max allowed angular acceleration (px/s^2) before shake-damping kicks in
+) {
+    private var lastVelX = 0f
+    private var lastVelY = 0f
+    private var tPrev: Long? = null
+
+    fun filter(dx: Float, dy: Float, timestampMs: Long): Pair<Float, Float> {
+        if (tPrev == null) {
+            tPrev = timestampMs
+            return Pair(dx, dy)
+        }
+        val dt = ((timestampMs - tPrev!!) / 1000.0f).coerceIn(0.001f, 0.1f)
+        tPrev = timestampMs
+
+        val targetVelX = dx / dt
+        val targetVelY = dy / dt
+
+        val accelX = (targetVelX - lastVelX) / dt
+        val accelY = (targetVelY - lastVelY) / dt
+
+        val clampedAccelX = accelX.coerceIn(-maxAccel, maxAccel)
+        val clampedAccelY = accelY.coerceIn(-maxAccel, maxAccel)
+
+        val finalVelX = lastVelX + clampedAccelX * dt
+        val finalVelY = lastVelY + clampedAccelY * dt
+
+        lastVelX = finalVelX
+        lastVelY = finalVelY
+
+        return Pair(finalVelX * dt, finalVelY * dt)
+    }
+
+    fun reset() {
+        lastVelX = 0f
+        lastVelY = 0f
+        tPrev = null
+    }
+}
+
+/**
  * Industry-standard 1€ (One Euro) Filter for adaptive head-tracking jitter suppression.
  */
 class OneEuroFilter(
-    var minCutoff: Float = 1.2f,   // Cutoff frequency at rest (Hz) — lower = smoother/zero jitter
+    var minCutoff: Float = 0.8f,   // Cutoff frequency at rest (Hz) — lower = smoother/zero jitter
     var beta: Float = 0.007f,      // Velocity response slope — higher = zero lag on quick movement
     var dCutoff: Float = 1.0f      // Derivative cutoff frequency (Hz)
 ) {
@@ -98,7 +143,7 @@ class OverlayService : Service() {
     private var screenWidth = 1920f
     private var screenHeight = 1080f
 
-    // Cursor Movement & 1Euro Adaptive Filtering
+    // Cursor Movement & Filtering (Adaptive Jerk Suppressor + 1Euro Filter)
     private var rawCursorX = 960f
     private var rawCursorY = 540f
     private var cursorX = 960f
@@ -106,8 +151,9 @@ class OverlayService : Service() {
     private var cursorMeasuredWidth = 30
     private var cursorMeasuredHeight = 30
 
-    private val filterX = OneEuroFilter(minCutoff = 1.2f, beta = 0.007f)
-    private val filterY = OneEuroFilter(minCutoff = 1.2f, beta = 0.007f)
+    private val jerkFilter = AdaptiveJerkFilter(maxAccel = 3500f)
+    private val filterX = OneEuroFilter(minCutoff = 0.8f, beta = 0.007f)
+    private val filterY = OneEuroFilter(minCutoff = 0.8f, beta = 0.007f)
 
     // Scroll mode (holding Volume Down + tilting head)
     private var isScrollModeActive = false
@@ -262,7 +308,6 @@ class OverlayService : Service() {
 
         setupOverlayWindow()
         
-        // Setup accessibility top-most TYPE_ACCESSIBILITY_OVERLAY window if service is connected
         HeadCursorAccessibilityService.instance?.setupCrosshairOverlay()
         if (HeadCursorAccessibilityService.instance == null) {
             setupHeadTrackedCursor()
@@ -560,6 +605,7 @@ class OverlayService : Service() {
         val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, true)
         if (!enableHeadCursor) return
 
+        jerkFilter.reset()
         filterX.reset()
         filterY.reset()
 
@@ -594,10 +640,19 @@ class OverlayService : Service() {
         val prevX = cursorX
         val prevY = cursorY
 
-        rawCursorX = (rawCursorX + deltaX * 15f * sensitivity).coerceIn(0f, screenWidth)
-        rawCursorY = (rawCursorY + deltaY * 15f * sensitivity).coerceIn(0f, screenHeight)
-
         val now = System.currentTimeMillis()
+
+        // 1. Pass raw deltas through Adaptive Jerk Filter to clamp sudden shake/twitch acceleration spikes
+        val (dampedDx, dampedDy) = jerkFilter.filter(
+            deltaX * 15f * sensitivity,
+            deltaY * 15f * sensitivity,
+            now
+        )
+
+        rawCursorX = (rawCursorX + dampedDx).coerceIn(0f, screenWidth)
+        rawCursorY = (rawCursorY + dampedDy).coerceIn(0f, screenHeight)
+
+        // 2. Pass coordinates through 1Euro Adaptive Filter for zero-jitter stationary hover & zero-lag sweeps
         cursorX = filterX.filter(rawCursorX, now)
         cursorY = filterY.filter(rawCursorY, now)
 
