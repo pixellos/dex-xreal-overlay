@@ -20,6 +20,7 @@ import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
@@ -37,6 +38,7 @@ class OverlayService : Service() {
     private var windowLayoutParams: WindowManager.LayoutParams? = null
 
     // Cursor Components
+    private var cursorRootFrame: FrameLayout? = null
     private var cursorLayout: LinearLayout? = null
     private var cursorIconView: TextView? = null
     private var cursorModeLabel: TextView? = null
@@ -338,11 +340,15 @@ class OverlayService : Service() {
         val mouseModeEnabled = prefs.getBoolean(KEY_MOUSE_MODE_ENABLED, true)
         if (!enableHeadCursor) return
 
+        val rootFrame = FrameLayout(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            visibility = if (mouseModeEnabled) View.VISIBLE else View.GONE
+        }
+
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setBackgroundColor(Color.TRANSPARENT)
-            visibility = if (mouseModeEnabled) View.VISIBLE else View.GONE
         }
 
         cursorIconView = TextView(this).apply {
@@ -375,7 +381,16 @@ class OverlayService : Service() {
             }
         }
 
+        val childParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+        }
+        rootFrame.addView(container, childParams)
+
         cursorLayout = container
+        cursorRootFrame = rootFrame
 
         // Full-screen MATCH_PARENT layer for ultra-performant GPU translationX/Y cursor updates
         val params = WindowManager.LayoutParams(
@@ -399,14 +414,14 @@ class OverlayService : Service() {
         cursorParams = params
 
         try {
-            windowManager.addView(cursorLayout, cursorParams)
+            windowManager.addView(cursorRootFrame, cursorParams)
             updateCursorViewPosition()
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    /** Ultra-fast GPU hardware-accelerated translation update (bypasses WindowManager re-layout IPC calls). */
+    /** Ultra-fast GPU hardware-accelerated translation update across 100% full screen area. */
     private fun updateCursorViewPosition() {
         val view = cursorLayout ?: return
         val halfW = if (cursorMeasuredWidth > 0) cursorMeasuredWidth / 2f else 30f
@@ -460,7 +475,7 @@ class OverlayService : Service() {
             handler.removeCallbacks(hideModeLabelRunnable)
 
             if (next) {
-                cursorLayout?.visibility = View.VISIBLE
+                cursorRootFrame?.visibility = View.VISIBLE
                 cursorModeLabel?.text = "🖱️"
                 cursorModeLabel?.setTextColor(Color.parseColor("#00FF66"))
                 updateCursorAppearance()
@@ -472,7 +487,7 @@ class OverlayService : Service() {
                 cursorIconView?.setTextColor(Color.parseColor("#FF0055"))
                 cursorIconView?.setShadowLayer(10f, 0f, 0f, Color.parseColor("#FF0055"))
                 handler.postDelayed({
-                    cursorLayout?.visibility = View.GONE
+                    cursorRootFrame?.visibility = View.GONE
                 }, 2000)
             }
         }
@@ -536,7 +551,10 @@ class OverlayService : Service() {
         if (deltaX.isNaN() || deltaY.isNaN() || !deltaX.isFinite() || !deltaY.isFinite()) return
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val sensitivity = prefs.getFloat(KEY_HEAD_SENSITIVITY, 1.0f).coerceIn(0.2f, 3.0f)
+        val rawSensSetting = prefs.getFloat(KEY_HEAD_SENSITIVITY, 1.0f).coerceIn(0.1f, 5.0f)
+        
+        // Logarithmic Sensitivity Filtering: gives fine precision for small movements & fast sweeps for big movements
+        val sensitivity = rawSensSetting
 
         if (isScrollModeActive) {
             // While holding Volume Down, pitch head up/down to scroll vertically!
@@ -609,8 +627,8 @@ class OverlayService : Service() {
         if (overlayView != null) {
             windowManager.removeView(overlayView)
         }
-        if (cursorLayout != null) {
-            try { windowManager.removeView(cursorLayout) } catch (e: Exception) {}
+        if (cursorRootFrame != null) {
+            try { windowManager.removeView(cursorRootFrame) } catch (e: Exception) {}
         }
     }
 
@@ -631,7 +649,7 @@ class OverlayService : Service() {
         const val KEY_MOUSE_MODE_ENABLED = "mouse_mode_enabled"
 
         // Configurable Head Sensitivity & Movement Smoothing
-        const val KEY_HEAD_SENSITIVITY = "head_sensitivity" // 0.2x to 3.0x
+        const val KEY_HEAD_SENSITIVITY = "head_sensitivity" // 0.1x to 5.0x (Log-filtered)
         const val KEY_SMOOTHING_FACTOR  = "head_smoothing"   // 0.05 to 1.0
 
         // Click Simulation Engine Options

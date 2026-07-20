@@ -158,6 +158,39 @@ class MainActivity : Activity() {
         root.addView(mapperCard)
         root.addView(gap())
 
+        // ── Card: Logarithmic Head Sensitivity Knob ────────────────────────────
+        val tuningCard = card("⚡ HEAD CURSOR SENSITIVITY (LOG FILTERED)", GREEN)
+
+        val logMin = Math.log10(0.1) // -1.0
+        val logMax = Math.log10(4.0) // 0.602
+        val currentSens = prefs.getFloat(OverlayService.KEY_HEAD_SENSITIVITY, 1.0f)
+        val sensLabel = label("Head Sensitivity: ${String.format("%.2f", currentSens)}x (Log Filtered)", YELLOW, 11f)
+        tuningCard.addView(sensLabel)
+
+        val sensSeekBar = SeekBar(this).apply {
+            max = 100
+            val logVal = Math.log10(currentSens.toDouble().coerceIn(0.1, 4.0))
+            progress = (((logVal - logMin) / (logMax - logMin)) * 100).toInt().coerceIn(0, 100)
+
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
+                    val logValCalc = logMin + (p / 100.0) * (logMax - logMin)
+                    val sensCalc = Math.pow(10.0, logValCalc).toFloat()
+                    sensLabel.text = "Head Sensitivity: ${String.format("%.2f", sensCalc)}x (Log Filtered)"
+                }
+                override fun onStartTrackingTouch(s: SeekBar?) {}
+                override fun onStopTrackingTouch(s: SeekBar?) {
+                    val p = s?.progress ?: 50
+                    val logValCalc = logMin + (p / 100.0) * (logMax - logMin)
+                    val sensCalc = Math.pow(10.0, logValCalc).toFloat()
+                    prefs.edit().putFloat(OverlayService.KEY_HEAD_SENSITIVITY, sensCalc).apply()
+                }
+            })
+        }
+        tuningCard.addView(sensSeekBar)
+        root.addView(tuningCard)
+        root.addView(gap())
+
         // ── Card: HUD Scale & Position ────────────────────────────────────────
         val currentScale = prefs.getFloat(OverlayService.KEY_SCALE, 1.0f)
         val currentPos   = prefs.getString(OverlayService.KEY_POSITION, OverlayService.POS_TOP_RIGHT)
