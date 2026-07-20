@@ -41,6 +41,7 @@ class OverlayService : Service() {
     private var cursorY = 540f
 
     private var usbImuDriver: XrealUsbImuDriver? = null
+    private var tcpImuDriver: XrealOneTcpImuDriver? = null
     private var udpImuReceiver: UdpImuReceiver? = null
     private var isNavActive = false
     private var isHudVisible = true
@@ -321,7 +322,7 @@ class OverlayService : Service() {
             }
         }
 
-        // 1. Direct XREAL 1s USB Driver with Magic MCU Initialization
+        // 1. Direct XREAL Air USB HID Driver
         usbImuDriver = XrealUsbImuDriver(this).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             onGlassesSingleTapListener = { onSingleTap() }
@@ -331,7 +332,13 @@ class OverlayService : Service() {
             usbImuDriver?.startReading(device)
         }
 
-        // 2. Ethernet / UDP Network Socket Receiver (Port 9090)
+        // 2. Direct XREAL 1s TCP Service Driver (Port 52998 on USB-Ethernet 169.254.2.1)
+        tcpImuDriver = XrealOneTcpImuDriver().apply {
+            onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
+            startListening()
+        }
+
+        // 3. Ethernet / UDP Network Socket Receiver (Port 9090)
         udpImuReceiver = UdpImuReceiver(9090).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             onGlassesSingleTapListener = { onSingleTap() }
@@ -359,7 +366,7 @@ class OverlayService : Service() {
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Cyberpunk HUD & XREAL Active")
-            .setContentText("XREAL 1s Hardware IMU & Socket Active")
+            .setContentText("XREAL 1s TCP Service (52998) & Socket Active")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
 
@@ -370,6 +377,7 @@ class OverlayService : Service() {
         super.onDestroy()
         handler.removeCallbacks(clockRunnable)
         usbImuDriver?.stopReading()
+        tcpImuDriver?.stopListening()
         udpImuReceiver?.stopListening()
         try {
             unregisterReceiver(batteryReceiver)
