@@ -40,8 +40,7 @@ class OverlayService : Service() {
     private var cursorX = 960f
     private var cursorY = 540f
 
-    private var tcpImuDriver: XrealOneTcpImuDriver? = null
-    private var udpImuReceiver: UdpImuReceiver? = null
+    private var imuManager: XrealOneImuManager? = null
     private var isNavActive = false
     private var isHudVisible = true
 
@@ -232,7 +231,6 @@ class OverlayService : Service() {
         handler.post(clockRunnable)
     }
 
-    // Glowing Cyberpunk Head-Tracked Cursor Reticle
     private fun setupHeadTrackedCursor() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, true)
@@ -321,17 +319,10 @@ class OverlayService : Service() {
             }
         }
 
-        // 1. Direct XREAL 1s TCP Service Driver (Port 52998 on USB-Ethernet 169.254.2.1)
-        tcpImuDriver = XrealOneTcpImuDriver(this).apply {
+        imuManager = XrealOneImuManager(this).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
-            startListening()
-        }
-
-        // 2. Ethernet / UDP Network Socket Receiver (Port 9090)
-        udpImuReceiver = UdpImuReceiver(9090).apply {
-            onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
-            onGlassesSingleTapListener = { onSingleTap() }
-            startListening()
+            onSingleTapListener = { onSingleTap() }
+            start()
         }
     }
 
@@ -355,7 +346,7 @@ class OverlayService : Service() {
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Cyberpunk HUD & XREAL 1s Active")
-            .setContentText("XREAL 1s TCP Service (52998) & Socket Active")
+            .setContentText("XREAL 1s Port 52998 TCP / Port 9090 UDP Listening")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
 
@@ -365,8 +356,7 @@ class OverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacks(clockRunnable)
-        tcpImuDriver?.stopListening()
-        udpImuReceiver?.stopListening()
+        imuManager?.stop()
         try {
             unregisterReceiver(batteryReceiver)
             unregisterReceiver(navReceiver)
