@@ -115,16 +115,13 @@ class MainActivity : Activity() {
         mapperCard.addView(cbMouseMode)
         mapperCard.addView(gap())
 
-        val actions = listOf(
+        val pressActions = listOf(
             OverlayService.ACTION_VAL_LEFT_CLICK  to "Execute Left Click",
-            OverlayService.ACTION_VAL_RIGHT_CLICK to "Execute Right Click",
-            OverlayService.ACTION_VAL_TOGGLE_HUD  to "Toggle HUD On/Off",
-            OverlayService.ACTION_VAL_RECENTER    to "Recenter Cursor",
-            OverlayService.ACTION_VAL_NONE        to "None (disabled)"
+            OverlayService.ACTION_VAL_RIGHT_CLICK to "Execute Right Click"
         )
 
         mapperCard.addView(label("Volume Up Press Action:", YELLOW, 11f))
-        val rgUp = radioGroup(actions,
+        val rgUp = radioGroup(pressActions,
             prefs.getString(OverlayService.KEY_VOL_UP_ACTION, OverlayService.ACTION_VAL_LEFT_CLICK) ?: "") { chosen ->
             prefs.edit().putString(OverlayService.KEY_VOL_UP_ACTION, chosen).apply()
             restartOverlay()
@@ -133,7 +130,7 @@ class MainActivity : Activity() {
         mapperCard.addView(gap())
 
         mapperCard.addView(label("Volume Down Press Action:", YELLOW, 11f))
-        val rgDown = radioGroup(actions,
+        val rgDown = radioGroup(pressActions,
             prefs.getString(OverlayService.KEY_VOL_DOWN_ACTION, OverlayService.ACTION_VAL_RIGHT_CLICK) ?: "") { chosen ->
             prefs.edit().putString(OverlayService.KEY_VOL_DOWN_ACTION, chosen).apply()
             restartOverlay()
@@ -141,11 +138,9 @@ class MainActivity : Activity() {
         mapperCard.addView(rgDown)
         mapperCard.addView(gap())
 
-        // Volume Down Hold Action (Vertical Head Scroll / Mouse Mode Toggle)
         val holdActions = listOf(
             OverlayService.ACTION_VAL_SCROLL to "Vertical Head Scroll (Hold + Tilt Head)",
-            OverlayService.ACTION_VAL_TOGGLE_HUD to "Toggle Mouse Mode (5s hold)",
-            OverlayService.ACTION_VAL_NONE to "None (disabled)"
+            OverlayService.ACTION_VAL_NONE   to "None (disabled)"
         )
         mapperCard.addView(label("Volume Down Hold Action:", YELLOW, 11f))
         val rgHold = radioGroup(holdActions,
@@ -249,7 +244,7 @@ class MainActivity : Activity() {
             val ny = (prefs.getInt(OverlayService.KEY_Y_OFFSET, 40) + dy).coerceIn(-500, 1500)
             prefs.edit().putInt(OverlayService.KEY_X_OFFSET, nx).putInt(OverlayService.KEY_Y_OFFSET, ny).apply()
             offsetLabel.text = "Offset: X=$nx, Y=$ny"
-            sendBroadcast(Intent(OverlayService.ACTION_UPDATE_POSITION))
+            sendBroadcast(Intent(OverlayService.ACTION_UPDATE_POSITION).apply { setPackage(packageName) })
         }
 
         val dpad = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
@@ -264,7 +259,7 @@ class MainActivity : Activity() {
         alignCard.addView(btn("[ RESET (40, 40) ]", RED) {
             prefs.edit().putInt(OverlayService.KEY_X_OFFSET, 40).putInt(OverlayService.KEY_Y_OFFSET, 40).apply()
             offsetLabel.text = "Offset: X=40, Y=40"
-            sendBroadcast(Intent(OverlayService.ACTION_UPDATE_POSITION))
+            sendBroadcast(Intent(OverlayService.ACTION_UPDATE_POSITION).apply { setPackage(packageName) })
         })
         root.addView(alignCard)
         root.addView(gap())
