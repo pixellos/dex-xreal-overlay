@@ -204,8 +204,21 @@ class XrealOneImuManager(private val context: Context) {
                                 onHeadMoveListener?.invoke(gyroY * 0.5f, -gyroX * 0.5f)
 
                                 frameCount++
-                                if (frameCount % 1000 == 0L) {
-                                    log("TCP STREAM: Successfully processed $frameCount raw frames.")
+                                if (frameCount == 1L || frameCount % 1000 == 0L) {
+                                    // Extract raw 134 bytes for analysis
+                                    val frameBytes = ByteArray(134)
+                                    val origPos = accumulator.position()
+                                    accumulator.position(startPos)
+                                    accumulator.get(frameBytes)
+                                    accumulator.position(origPos)
+                                    
+                                    val hexHeader = frameBytes.take(12).joinToString(" ") { String.format("%02X", it) }
+                                    val hexGyro = frameBytes.slice(34..45).joinToString(" ") { String.format("%02X", it) }
+                                    log("TCP STREAM: Frame #$frameCount raw hex header: [$hexHeader] gyro: [$hexGyro]")
+                                }
+
+                                if (frameCount % 200 == 0L) {
+                                    log("TCP STREAM: Frame #$frameCount: gyroX=${String.format("%.4f", gyroX)}, gyroY=${String.format("%.4f", gyroY)}")
                                 }
 
                                 accumulator.position(startPos + 134)

@@ -24,10 +24,13 @@ import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import android.net.Uri
+import android.provider.Settings
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileReader
 import java.io.FileWriter
+import java.io.InputStreamReader
 import java.net.NetworkInterface
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -205,6 +208,63 @@ class DiagnosticsActivity : Activity() {
 
         val spacer2 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer2)
+
+        // --- SECTION 3: Network Interface Configuration ---
+        val netConfigCard = createCompactCard("🔧 ETH1 STATIC IP CONFIGURATION", "#FF6600")
+
+        val statusLabel = TextView(this).apply {
+            text = "To enable the 'Save' button in Android Ethernet Settings:\n" +
+                   " • IP Address: 169.254.2.2\n" +
+                   " • Network Prefix Length: 24 (do NOT type 255.255.255.0!)\n" +
+                   " • Gateway: 169.254.2.1\n" +
+                   " • DNS 1: 8.8.8.8"
+            setTextColor(Color.parseColor("#FFE600"))
+            textSize = 10f
+            typeface = Typeface.MONOSPACE
+            setPadding(0, 0, 0, 8)
+        }
+        netConfigCard.addView(statusLabel)
+
+        val netBtnRow1 = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 4, 0, 4)
+        }
+
+        val btnAutoConfig = Button(this).apply {
+            text = "⚡ AUTO-CONFIGURE eth1"
+            setBackgroundColor(Color.parseColor("#FF6600"))
+            setTextColor(Color.BLACK)
+            typeface = Typeface.MONOSPACE
+            textSize = 9f
+            setTypeface(typeface, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, 4, 0)
+            }
+            setOnClickListener {
+                autoConfigureEth1StaticIp()
+            }
+        }
+        netBtnRow1.addView(btnAutoConfig)
+
+        val btnOpenEthSettings = Button(this).apply {
+            text = "⚙ OPEN ETH SETTINGS"
+            setBackgroundColor(Color.parseColor("#0C182B"))
+            setTextColor(Color.parseColor("#FF6600"))
+            typeface = Typeface.MONOSPACE
+            textSize = 9f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(4, 0, 0, 0)
+            }
+            setOnClickListener {
+                openEthernetSettings()
+            }
+        }
+        netBtnRow1.addView(btnOpenEthSettings)
+        netConfigCard.addView(netBtnRow1)
+        rootLayout.addView(netConfigCard)
+
+        val spacer3 = TextView(this).apply { text = " " }
+        rootLayout.addView(spacer3)
 
         // Log Action Row (Clear & Export)
         val actionRow = LinearLayout(this).apply {
@@ -429,6 +489,110 @@ class DiagnosticsActivity : Activity() {
         }
 
         appendLog("--- SCAN COMPLETED ---")
+    }
+
+    private fun autoConfigureEth1StaticIp() {
+        appendLog("--- AUTO-CONFIGURING eth1 STATIC IP ---")
+
+        // First check if eth1 already has an IP
+        try {
+            val ni = NetworkInterface.getByName("eth1")
+            if (ni != null) {
+                val addrs = ni.inetAddresses
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    if (!addr.isLoopbackAddress && addr.hostAddress.indexOf(':') < 0) {
+                        appendLog("eth1 already has IP: ${addr.hostAddress}")
+                    }
+                }
+                appendLog("eth1 is UP=${ni.isUp}, name=${ni.displayName}")
+            } else {
+                appendLog("eth1 interface NOT FOUND. Plug in glasses first!")
+                Toast.makeText(this, "eth1 not found - plug in glasses!", Toast.LENGTH_SHORT).show()
+                return
+            }
+        } catch (e: Exception) {
+            appendLog("eth1 query error: ${e.message}")
+        }
+
+        // Try multiple approaches to assign static IP
+        val commands = listOf(
+            "ip addr add 169.254.2.2/24 dev eth1",
+            "ifconfig eth1 169.254.2.2 netmask 255.255.255.0 up",
+            "ip link set eth1 up"
+        )
+
+        for (cmd in commands) {
+            try {
+                appendLog("Executing: $cmd")
+                val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", cmd))
+                val exitCode = process.waitFor()
+                val stdout = BufferedReader(InputStreamReader(process.inputStream)).readText().trim()
+                val stderr = BufferedReader(InputStreamReader(process.errorStream)).readText().trim()
+                appendLog("  exit=$exitCode stdout=[$stdout] stderr=[$stderr]")
+            } catch (e: Exception) {
+                appendLog("  Command failed: ${e.message}")
+            }
+        }
+
+        // Try with su (root) as last resort
+        try {
+            appendLog("Attempting with su (root)...")
+            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "ip addr add 169.254.2.2/24 dev eth1 && ip link set eth1 up"))
+            val exitCode = process.waitFor()
+            val stdout = BufferedReader(InputStreamReader(process.inputStream)).readText().trim()
+            val stderr = BufferedReader(InputStreamReader(process.errorStream)).readText().trim()
+            appendLog("  su exit=$exitCode stdout=[$stdout] stderr=[$stderr]")
+        } catch (e: Exception) {
+            appendLog("  su not available: ${e.message}")
+        }
+
+        // Verify result
+        try {
+            val ni = NetworkInterface.getByName("eth1")
+            if (ni != null) {
+                val addrs = ni.inetAddresses
+                var hasIp = false
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    if (!addr.isLoopbackAddress && addr.hostAddress.indexOf(':') < 0) {
+                        appendLog("RESULT: eth1 now has IP: ${addr.hostAddress}")
+                        hasIp = true
+                    }
+                }
+                if (!hasIp) {
+                    appendLog("RESULT: eth1 still has NO IPv4 address!")
+                    appendLog("TIP: Open Samsung Ethernet Settings and set:")
+                    appendLog("  IP: 169.254.2.2  Mask: 255.255.255.0  GW: 169.254.2.1")
+                }
+            }
+        } catch (e: Exception) {
+            appendLog("Verification error: ${e.message}")
+        }
+
+        appendLog("--- AUTO-CONFIGURE COMPLETED ---")
+    }
+
+    private fun openEthernetSettings() {
+        appendLog("Attempting to open Ethernet settings...")
+        val intentsToTry = listOf(
+            Intent("android.settings.ETHERNET_SETTINGS"),
+            Intent("com.samsung.android.settings.ETHERNET_SETTINGS"),
+            Intent(Settings.ACTION_WIRELESS_SETTINGS),
+            Intent(Settings.ACTION_SETTINGS)
+        )
+
+        for (intent in intentsToTry) {
+            try {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                appendLog("Opened: ${intent.action}")
+                return
+            } catch (e: Exception) {
+                appendLog("Intent ${intent.action} failed: ${e.message}")
+            }
+        }
+        Toast.makeText(this, "Could not open Ethernet settings", Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroy() {
