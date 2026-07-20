@@ -1,7 +1,13 @@
 package com.example.dexoverlay
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.hardware.usb.UsbConstants
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbDeviceConnection
+import android.hardware.usb.UsbManager
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.os.Build
@@ -22,8 +28,27 @@ class XrealOneImuManager(private val context: Context) {
 
     private var tcpSocket: Socket? = null
     @Volatile private var activeAttemptSocket: Socket? = null
+    private var usbConnection: UsbDeviceConnection? = null
+    private val usbThreads = mutableListOf<Thread>()
+
+    private var usbManager: UsbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+    private var isReceiverRegistered = false
 
     var onHeadMoveListener: ((deltaX: Float, deltaY: Float) -> Unit)? = null
+
+    private val usbReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_USB_PERMISSION) {
+                val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+                if (granted) {
+                    log("USB: Permission granted by user. Starting button listener...")
+                    startUsbButtonListener()
+                } else {
+                    log("USB: Permission denied by user.")
+                }
+            }
+        }
+    }
 
     private fun log(msg: String) {
         Log.d("XrealOneImu", msg)
@@ -41,11 +66,105 @@ class XrealOneImuManager(private val context: Context) {
 
         stopThreadsInternal()
 
+        // Register USB permission receiver dynamically
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(usbReceiver, IntentFilter(ACTION_USB_PERMISSION), Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                context.registerReceiver(usbReceiver, IntentFilter(ACTION_USB_PERMISSION))
+            }
+            isReceiverRegistered = true
+        } catch (e: Exception) {
+            log("USB: Receiver registration error: ${e.message}")
+        }
+
         log("Starting XREAL 1s TCP Tracking Engine...")
 
         workerThread = Thread {
             runTcpNetworkEngine()
         }.apply { start() }
+
+        // Automatically start the USB button listener (which triggers the popup if permission is needed)
+        startUsbButtonListener()
+    }
+
+    private fun startUsbButtonListener() {
+        val deviceList = usbManager.deviceList.values
+        val match = deviceList.find { device ->
+            device.vendorId == 0x3318 || device.productId in intArrayOf(0x0436, 0x0425, 0x0429)
+        }
+
+        if (match == null) {
+            log("USB: No USB XREAL glasses detected for button events.")
+            return
+        }
+
+        if (!usbManager.hasPermission(match)) {
+            log("USB: Missing USB permission to read physical buttons. Requesting...")
+            requestUsbPermission(match)
+            return
+        }
+
+        Thread {
+            log("USB: Opening USB connection to read physical buttons...")
+            var connection: UsbDeviceConnection? = null
+            try {
+                connection = usbManager.openDevice(match) ?: return@Thread
+                usbConnection = connection
+                log("USB: Connected to glasses for physical button events.")
+
+                for (i in 0 until match.interfaceCount) {
+                    val intf = match.getInterface(i)
+                    val claimed = connection.claimInterface(intf, true)
+                    log("USB: Claimed interface $i for buttons: $claimed")
+
+                    for (e in 0 until intf.endpointCount) {
+                        val ep = intf.getEndpoint(e)
+                        if (ep.direction == UsbConstants.USB_DIR_IN) {
+                            val t = Thread {
+                                val buf = ByteArray(64)
+                                log("USB: Listening on Endpoint 0x${Integer.toHexString(ep.address)}")
+                                while (isRunning) {
+                                    val read = connection.bulkTransfer(ep, buf, buf.size, 100)
+                                    if (read >= 17) {
+                                        if (buf[0] == 0xFD.toByte()) {
+                                            val msgId = ((buf[16].toInt() and 0xFF) shl 8) or (buf[15].toInt() and 0xFF)
+                                            if (msgId == 0x6C05) {
+                                                val virtButton = buf[26].toInt() and 0xFF
+                                                val value = buf[30].toInt() and 0xFF
+                                                log("USB BUTTON: Pressed virtButton=$virtButton, value=$value")
+
+                                                if (value == 1) { // Button Down
+                                                    val triggerIntent = Intent(OverlayService.ACTION_TRIGGER_TAP)
+                                                    context.sendBroadcast(triggerIntent)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }.apply { start() }
+                            usbThreads.add(t)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                log("USB BUTTON: Error reading HID: ${e.message}")
+                try { connection?.close() } catch (ex: Exception) {}
+            }
+        }.start()
+    }
+
+    private fun requestUsbPermission(device: UsbDevice) {
+        val intent = Intent(ACTION_USB_PERMISSION).apply {
+            setPackage(context.packageName)
+        }
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            android.app.PendingIntent.FLAG_MUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        } else {
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val pi = android.app.PendingIntent.getBroadcast(context, 0, intent, flags)
+        usbManager.requestPermission(device, pi)
     }
 
     private fun runTcpNetworkEngine() {
@@ -287,6 +406,13 @@ class XrealOneImuManager(private val context: Context) {
         if (!isRunning) return
         isRunning = false
         stopThreadsInternal()
+        
+        if (isReceiverRegistered) {
+            try {
+                context.unregisterReceiver(usbReceiver)
+            } catch (e: Exception) {}
+            isReceiverRegistered = false
+        }
     }
 
     private fun stopThreadsInternal() {
@@ -300,8 +426,19 @@ class XrealOneImuManager(private val context: Context) {
         } catch (e: Exception) {}
         tcpSocket = null
 
+        try {
+            for (t in usbThreads) t.interrupt()
+            usbThreads.clear()
+            usbConnection?.close()
+        } catch (e: Exception) {}
+        usbConnection = null
+
         workerThread?.interrupt()
         workerThread = null
         log("Manager threads and sockets cleaned up.")
+    }
+
+    companion object {
+        const val ACTION_USB_PERMISSION = "com.example.dexoverlay.USB_PERMISSION"
     }
 }

@@ -177,12 +177,30 @@ class DiagnosticsActivity : Activity() {
             typeface = Typeface.MONOSPACE
             textSize = 10f
             setTypeface(typeface, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, 4, 0)
+            }
             setOnClickListener {
                 openEthernetSettings()
             }
         }
         netBtnRow1.addView(btnOpenEthSettings)
+
+        val btnUsbPermission = Button(this).apply {
+            text = "🔑 KEY/BUTTON USB ACCESS"
+            setBackgroundColor(Color.parseColor("#0C182B"))
+            setTextColor(Color.parseColor("#00E5FF"))
+            typeface = Typeface.MONOSPACE
+            textSize = 10f
+            setTypeface(typeface, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(4, 0, 0, 0)
+            }
+            setOnClickListener {
+                requestGlassesUsbPermissionDirectly()
+            }
+        }
+        netBtnRow1.addView(btnUsbPermission)
         netConfigCard.addView(netBtnRow1)
         rootLayout.addView(netConfigCard)
 
@@ -428,6 +446,36 @@ class DiagnosticsActivity : Activity() {
             }
         }
         Toast.makeText(this, "Could not open Ethernet settings", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun requestGlassesUsbPermissionDirectly() {
+        appendLog("USB: Requesting USB access directly from UI...")
+        try {
+            val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+            val deviceList = usbManager.deviceList.values
+            val match = deviceList.find { device ->
+                device.vendorId == 0x3318 || device.productId in intArrayOf(0x0436, 0x0425, 0x0429)
+            }
+            if (match != null) {
+                val intent = Intent(XrealOneImuManager.ACTION_USB_PERMISSION).apply {
+                    setPackage(packageName)
+                }
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    android.app.PendingIntent.FLAG_MUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                } else {
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                }
+                val pi = android.app.PendingIntent.getBroadcast(this, 0, intent, flags)
+                usbManager.requestPermission(match, pi)
+                appendLog("USB: Permission request dialog triggered.")
+                Toast.makeText(this, "USB permission requested!", Toast.LENGTH_SHORT).show()
+            } else {
+                appendLog("USB: XREAL Glasses not found on USB bus. Plug them in!")
+                Toast.makeText(this, "Plug in glasses first!", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            appendLog("USB: Permission request error: ${e.message}")
+        }
     }
 
     override fun onDestroy() {
