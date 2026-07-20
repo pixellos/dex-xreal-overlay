@@ -25,11 +25,12 @@ import java.nio.ByteOrder
 
 class XrealOneImuManager(private val context: Context) {
 
-    private var isRunning = false
+    @Volatile private var isRunning = false
     private var workerThread: Thread? = null
 
     // Engines
     private var tcpSocket: Socket? = null
+    @Volatile private var activeAttemptSocket: Socket? = null
     private var udpSocket: DatagramSocket? = null
     private var usbConnection: UsbDeviceConnection? = null
     private val usbThreads = mutableListOf<Thread>()
@@ -48,9 +49,13 @@ class XrealOneImuManager(private val context: Context) {
         context.sendBroadcast(intent)
     }
 
+    @Synchronized
     fun start() {
         if (isRunning) return
         isRunning = true
+
+        // Clean up any stale threads or connections first
+        stopThreadsInternal()
 
         val prefs = context.getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
         val selectedEngine = prefs.getString(OverlayService.KEY_TRACKING_ENGINE, OverlayService.ENGINE_USB) ?: OverlayService.ENGINE_USB
@@ -84,8 +89,9 @@ class XrealOneImuManager(private val context: Context) {
             return
         }
 
+        var connection: UsbDeviceConnection? = null
         try {
-            val connection = usbManager.openDevice(match) ?: run {
+            connection = usbManager.openDevice(match) ?: run {
                 log("Failed to open connection to XREAL USB device!")
                 return
             }
@@ -139,6 +145,8 @@ class XrealOneImuManager(private val context: Context) {
             }
         } catch (e: Exception) {
             log("USB HID Engine Error: ${e.message}")
+            try { connection?.close() } catch (ex: Exception) {}
+            usbConnection = null
         }
     }
 
@@ -154,8 +162,10 @@ class XrealOneImuManager(private val context: Context) {
             // Try connecting to candidates sequentially
             for (host in candidates) {
                 if (!isRunning) break
+                var s: Socket? = null
                 try {
-                    val s = Socket()
+                    s = Socket()
+                    activeAttemptSocket = s
                     s.tcpNoDelay = true
                     s.keepAlive = true
                     
@@ -166,10 +176,13 @@ class XrealOneImuManager(private val context: Context) {
                     s.soTimeout = 2000
                     connectedSocket = s
                     connectedHost = host
-                    log("TCP PROBE: SUCCESS! Established connection to $host:52998")
+                    log("TCP PROBE: SUCCESS! Connected to $host:52998")
                     break
                 } catch (e: Exception) {
                     log("TCP PROBE: Failed connecting to [$host]: ${e.message}")
+                    try { s?.close() } catch (ex: Exception) {}
+                } finally {
+                    activeAttemptSocket = null
                 }
             }
 
@@ -410,20 +423,43 @@ class XrealOneImuManager(private val context: Context) {
         }
     }
 
+    @Synchronized
     fun stop() {
+        if (!isRunning) return
         isRunning = false
+        stopThreadsInternal()
+    }
+
+    private fun stopThreadsInternal() {
+        // Cancel/close any active connect attempts immediately to prevent blocks during stop/restart
+        try {
+            activeAttemptSocket?.close()
+        } catch (e: Exception) {}
+        activeAttemptSocket = null
+
+        // Close any active TCP stream sockets
         try {
             tcpSocket?.close()
         } catch (e: Exception) {}
+        tcpSocket = null
+
+        // Close UDP sockets
         try {
             udpSocket?.close()
         } catch (e: Exception) {}
+        udpSocket = null
+
+        // Clean up USB threads and connections
         try {
             for (t in usbThreads) t.interrupt()
             usbThreads.clear()
             usbConnection?.close()
         } catch (e: Exception) {}
+        usbConnection = null
+
+        // Interrupt and join the main worker thread
         workerThread?.interrupt()
         workerThread = null
+        log("Manager threads and sockets cleaned up.")
     }
 }
