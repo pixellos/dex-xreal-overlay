@@ -17,17 +17,30 @@ import android.os.Bundle
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.Gravity
-import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.SeekBar
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 
 class MainActivity : Activity() {
+
+    // ── Cyberpunk palette ─────────────────────────────────────────────────────
+    companion object {
+        const val BG        = "#000000"
+        const val BG_CARD   = "#0A0A0A"
+        const val GREEN     = "#00FF66"
+        const val YELLOW    = "#FFE600"
+        const val RED       = "#FF0055"
+        const val DIM       = "#1A1A1A"
+
+        const val ACTION_LOG_UPDATE = "com.example.dexoverlay.LOG_UPDATE"
+        const val EXTRA_LOG_MSG     = "log_msg"
+    }
 
     private lateinit var statusTag: TextView
     private lateinit var btnPermissionStatus: Button
@@ -44,237 +57,113 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         stopOverlayService()
 
         val prefs = getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
 
-        val rootLayout = LinearLayout(this).apply {
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(28, 20, 28, 28)
-            setBackgroundColor(Color.parseColor("#03060B"))
+            setBackgroundColor(Color.parseColor(BG))
         }
 
-        // --- Streamlined Cyberdeck Header ---
-        val headerCard = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+        // ── Header ────────────────────────────────────────────────────────────
+        val header = row().apply {
+            background = border(GREEN, 2)
             setPadding(16, 12, 16, 12)
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#09111E"))
-                setStroke(2, Color.parseColor("#FF0055"))
-                cornerRadius = 3f
-            }
         }
+        header.addView(label("CYBERDECK v556 // HUD OS", YELLOW, 14f, bold = true,
+            weight = 1f))
+        statusTag = label("[ PENDING ]", RED, 10f)
+        header.addView(statusTag)
+        root.addView(header)
+        root.addView(gap())
 
-        val headerText = TextView(this).apply {
-            text = "CYBERDECK v556 // HUD OS"
-            textSize = 14f
-            setTextColor(Color.parseColor("#FFE600"))
-            typeface = Typeface.MONOSPACE
-            setTypeface(typeface, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        headerCard.addView(headerText)
-
-        statusTag = TextView(this).apply {
-            text = "[ PENDING ]"
-            textSize = 10f
-            setTextColor(Color.parseColor("#FF0055"))
-            typeface = Typeface.MONOSPACE
-        }
-        headerCard.addView(statusTag)
-        rootLayout.addView(headerCard)
-
-        val spacer1 = TextView(this).apply { text = " " }
-        rootLayout.addView(spacer1)
-
-        // --- Card 1: Upfront Access Requests ---
-        val accessCard = createCompactCard("⚡ UPFRONT SYSTEM ACCESS STATUS", "#00FF66")
-
-        btnPermissionStatus = Button(this).apply {
-            text = "🔄 SCAN & ACQUIRE ALL REQUIRED PERMISSIONS"
-            setBackgroundColor(Color.parseColor("#0C182B"))
-            setTextColor(Color.parseColor("#00FF66"))
-            typeface = Typeface.MONOSPACE
-            textSize = 11f
-            setTypeface(typeface, Typeface.BOLD)
-            setOnClickListener {
-                checkAndRequestAllPermissions(forceTrigger = true)
-            }
+        // ── Card: Permissions ─────────────────────────────────────────────────
+        val accessCard = card("⚡ UPFRONT SYSTEM ACCESS STATUS", GREEN)
+        btnPermissionStatus = btn("🔄 SCAN & ACQUIRE ALL REQUIRED PERMISSIONS", GREEN) {
+            checkAndRequestAllPermissions(forceTrigger = true)
         }
         accessCard.addView(btnPermissionStatus)
-        rootLayout.addView(accessCard)
+        root.addView(accessCard)
+        root.addView(gap())
 
-        val spacerAccess = TextView(this).apply { text = " " }
-        rootLayout.addView(spacerAccess)
+        // ── Card: Diagnostics ─────────────────────────────────────────────────
+        val devCard = card("👓 XREAL 1s DIAGNOSTICS & CONTROLS", GREEN)
+        devCard.addView(btn("🔎 OPEN FULL DIAGNOSTICS & SYSTEM LOGS", GREEN) {
+            startActivity(Intent(this, DiagnosticsActivity::class.java))
+        })
+        root.addView(devCard)
+        root.addView(gap())
 
-        // --- Card 2: XREAL 1s Diagnostics & Control ---
-        val devCard = createCompactCard("👓 XREAL 1s DIAGNOSTICS & CONTROLS", "#00E5FF")
+        // ── Card: Volume Buttons Mapper ───────────────────────────────────────
+        val mapperCard = card("🕹️ VOLUME BUTTONS ACTION MAPPER", YELLOW)
 
-        val btnDiagnostics = Button(this).apply {
-            text = "🔎 OPEN FULL DIAGNOSTICS & SYSTEM LOGS"
-            setBackgroundColor(Color.parseColor("#0C182B"))
-            setTextColor(Color.parseColor("#00FF66"))
-            typeface = Typeface.MONOSPACE
-            textSize = 11f
-            setTypeface(typeface, Typeface.BOLD)
-            setOnClickListener {
-                val intent = Intent(this@MainActivity, DiagnosticsActivity::class.java)
-                startActivity(intent)
-            }
-        }
-        devCard.addView(btnDiagnostics)
-        rootLayout.addView(devCard)
-
-        val spacer_mode = TextView(this).apply { text = " " }
-        rootLayout.addView(spacer_mode)
-
-        // --- Card 3: Volume Buttons Action Mapper ---
-        val mapperCard = createCompactCard("🕹️ VOLUME BUTTONS ACTION MAPPER", "#00E5FF")
-
-        // Mouse Mode Toggle
         cbMouseMode = CheckBox(this).apply {
-            text = " Enable Head Cursor Clicking (Mouse Mode)"
+            text = "  Enable Head Cursor (Mouse Mode)"
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             textSize = 12f
             isChecked = prefs.getBoolean(OverlayService.KEY_MOUSE_MODE_ENABLED, true)
-            setOnCheckedChangeListener { buttonView, isChecked ->
-                if (buttonView.isPressed) {
-                    prefs.edit().putBoolean(OverlayService.KEY_MOUSE_MODE_ENABLED, isChecked).apply()
-                    restartOverlayServiceIfRunning()
+            setOnCheckedChangeListener { v, checked ->
+                if (v.isPressed) {
+                    prefs.edit().putBoolean(OverlayService.KEY_MOUSE_MODE_ENABLED, checked).apply()
+                    restartOverlay()
                 }
             }
         }
         mapperCard.addView(cbMouseMode)
+        mapperCard.addView(gap())
 
-        val spacerMapper = TextView(this).apply { text = " " }
-        mapperCard.addView(spacerMapper)
-
-        // Volume Up Action Configuration
-        val labelVolUp = TextView(this).apply {
-            text = "Volume Up Press Action:"
-            setTextColor(Color.parseColor("#FFE600"))
-            textSize = 11f
-            typeface = Typeface.MONOSPACE
-        }
-        mapperCard.addView(labelVolUp)
-
-        val rgVolUp = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
         val actions = listOf(
-            OverlayService.ACTION_VAL_LEFT_CLICK to "Execute Left Click",
+            OverlayService.ACTION_VAL_LEFT_CLICK  to "Execute Left Click",
             OverlayService.ACTION_VAL_RIGHT_CLICK to "Execute Right Click (Long Press)",
-            OverlayService.ACTION_VAL_TOGGLE_HUD to "Toggle HUD Overlay On/Off",
-            OverlayService.ACTION_VAL_RECENTER to "Recenter Cursor to Center",
-            OverlayService.ACTION_VAL_NONE to "None (Disable Action)"
+            OverlayService.ACTION_VAL_TOGGLE_HUD  to "Toggle HUD On/Off",
+            OverlayService.ACTION_VAL_RECENTER    to "Recenter Cursor",
+            OverlayService.ACTION_VAL_NONE        to "None (disabled)"
         )
 
-        val currentVolUp = prefs.getString(OverlayService.KEY_VOL_UP_ACTION, OverlayService.ACTION_VAL_LEFT_CLICK)
-        val volUpButtons = mutableListOf<RadioButton>()
-
-        for ((actionVal, actionLabel) in actions) {
-            val rb = RadioButton(this).apply {
-                id = View.generateViewId()
-                text = actionLabel
-                setTextColor(Color.WHITE)
-                textSize = 10f
-                typeface = Typeface.MONOSPACE
-                isChecked = (currentVolUp == actionVal)
-            }
-            rgVolUp.addView(rb)
-            volUpButtons.add(rb)
+        mapperCard.addView(label("Volume Up Press Action:", YELLOW, 11f))
+        val rgUp = radioGroup(actions,
+            prefs.getString(OverlayService.KEY_VOL_UP_ACTION, OverlayService.ACTION_VAL_LEFT_CLICK) ?: "") { chosen ->
+            prefs.edit().putString(OverlayService.KEY_VOL_UP_ACTION, chosen).apply()
+            restartOverlay()
         }
-        rgVolUp.setOnCheckedChangeListener { group, checkedId ->
-            val checkedRb = group.findViewById<RadioButton>(checkedId)
-            if (checkedRb != null && checkedRb.isPressed) {
-                val index = group.indexOfChild(checkedRb)
-                if (index in actions.indices) {
-                    val chosen = actions[index].first
-                    prefs.edit().putString(OverlayService.KEY_VOL_UP_ACTION, chosen).apply()
-                    Toast.makeText(this@MainActivity, "Vol Up action updated!", Toast.LENGTH_SHORT).show()
-                    restartOverlayServiceIfRunning()
-                }
-            }
+        mapperCard.addView(rgUp)
+        mapperCard.addView(gap())
+
+        mapperCard.addView(label("Volume Down Press Action:", YELLOW, 11f))
+        val rgDown = radioGroup(actions,
+            prefs.getString(OverlayService.KEY_VOL_DOWN_ACTION, OverlayService.ACTION_VAL_RIGHT_CLICK) ?: "") { chosen ->
+            prefs.edit().putString(OverlayService.KEY_VOL_DOWN_ACTION, chosen).apply()
+            restartOverlay()
         }
-        mapperCard.addView(rgVolUp)
+        mapperCard.addView(rgDown)
+        root.addView(mapperCard)
+        root.addView(gap())
 
-        val spacerMapper2 = TextView(this).apply { text = "\n" }
-        mapperCard.addView(spacerMapper2)
-
-        // Volume Down Action Configuration
-        val labelVolDown = TextView(this).apply {
-            text = "Volume Down Press Action:"
-            setTextColor(Color.parseColor("#FFE600"))
-            textSize = 11f
-            typeface = Typeface.MONOSPACE
-        }
-        mapperCard.addView(labelVolDown)
-
-        val rgVolDown = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
-        val currentVolDown = prefs.getString(OverlayService.KEY_VOL_DOWN_ACTION, OverlayService.ACTION_VAL_RIGHT_CLICK)
-        val volDownButtons = mutableListOf<RadioButton>()
-
-        for ((actionVal, actionLabel) in actions) {
-            val rb = RadioButton(this).apply {
-                id = View.generateViewId()
-                text = actionLabel
-                setTextColor(Color.WHITE)
-                textSize = 10f
-                typeface = Typeface.MONOSPACE
-                isChecked = (currentVolDown == actionVal)
-            }
-            rgVolDown.addView(rb)
-            volDownButtons.add(rb)
-        }
-        rgVolDown.setOnCheckedChangeListener { group, checkedId ->
-            val checkedRb = group.findViewById<RadioButton>(checkedId)
-            if (checkedRb != null && checkedRb.isPressed) {
-                val index = group.indexOfChild(checkedRb)
-                if (index in actions.indices) {
-                    val chosen = actions[index].first
-                    prefs.edit().putString(OverlayService.KEY_VOL_DOWN_ACTION, chosen).apply()
-                    Toast.makeText(this@MainActivity, "Vol Down action updated!", Toast.LENGTH_SHORT).show()
-                    restartOverlayServiceIfRunning()
-                }
-            }
-        }
-        mapperCard.addView(rgVolDown)
-        rootLayout.addView(mapperCard)
-
-        val spacer2 = TextView(this).apply { text = " " }
-        rootLayout.addView(spacer2)
-
-        // --- Card 4: HUD Customization (Scale & Position) ---
+        // ── Card: HUD Scale & Position ────────────────────────────────────────
         val currentScale = prefs.getFloat(OverlayService.KEY_SCALE, 1.0f)
-        val currentPos = prefs.getString(OverlayService.KEY_POSITION, OverlayService.POS_TOP_RIGHT)
+        val currentPos   = prefs.getString(OverlayService.KEY_POSITION, OverlayService.POS_TOP_RIGHT)
 
-        val configCard = createCompactCard("🎯 HUD SCALE & CORNER POSITION", "#00E5FF")
+        val configCard = card("🎯 HUD SCALE & CORNER POSITION", YELLOW)
 
-        val scaleLabel = TextView(this).apply {
-            text = "HUD Size Scale: ${String.format("%.2f", currentScale)}x"
-            textSize = 11f
-            setTextColor(Color.parseColor("#00E5FF"))
-            typeface = Typeface.MONOSPACE
-        }
+        val scaleLabel = label("HUD Scale: ${String.format("%.2f", currentScale)}x", GREEN, 11f)
         configCard.addView(scaleLabel)
 
         val seekBar = SeekBar(this).apply {
             max = 125
             progress = ((currentScale - 0.25f) * 100).toInt()
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    val newScale = 0.25f + (progress / 100f)
-                    scaleLabel.text = "HUD Size Scale: ${String.format("%.2f", newScale)}x"
+                override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
+                    scaleLabel.text = "HUD Scale: ${String.format("%.2f", 0.25f + p / 100f)}x"
                 }
-
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                    val progress = seekBar?.progress ?: 75
-                    val finalScale = 0.25f + (progress / 100f)
-                    prefs.edit().putFloat(OverlayService.KEY_SCALE, finalScale).apply()
-                    restartOverlayServiceIfRunning()
+                override fun onStartTrackingTouch(s: SeekBar?) {}
+                override fun onStopTrackingTouch(s: SeekBar?) {
+                    val scale = 0.25f + (s?.progress ?: 75) / 100f
+                    prefs.edit().putFloat(OverlayService.KEY_SCALE, scale).apply()
+                    restartOverlay()
                 }
             })
         }
@@ -284,175 +173,68 @@ class MainActivity : Activity() {
             orientation = RadioGroup.HORIZONTAL
             gravity = Gravity.CENTER_HORIZONTAL
         }
-
-        val rbTopRight = RadioButton(this).apply {
-            id = View.generateViewId()
-            text = "Top-Right  "
-            setTextColor(Color.parseColor("#FFE600"))
-            typeface = Typeface.MONOSPACE
-            textSize = 11f
-            isChecked = (currentPos == OverlayService.POS_TOP_RIGHT)
-        }
-        val rbTopLeft = RadioButton(this).apply {
-            id = View.generateViewId()
-            text = "Top-Left"
-            setTextColor(Color.parseColor("#FFE600"))
-            typeface = Typeface.MONOSPACE
-            textSize = 11f
-            isChecked = (currentPos == OverlayService.POS_TOP_LEFT)
-        }
-
-        posGroup.addView(rbTopRight)
-        posGroup.addView(rbTopLeft)
-
-        posGroup.setOnCheckedChangeListener { group, checkedId ->
-            val checkedRb = group.findViewById<RadioButton>(checkedId)
-            if (checkedRb != null && checkedRb.isPressed) {
-                val selectedPos = if (checkedId == rbTopLeft.id) OverlayService.POS_TOP_LEFT else OverlayService.POS_TOP_RIGHT
-                prefs.edit().putString(OverlayService.KEY_POSITION, selectedPos).apply()
-                restartOverlayServiceIfRunning()
+        val rbRight = radioBtn("Top-Right", currentPos == OverlayService.POS_TOP_RIGHT)
+        val rbLeft  = radioBtn("Top-Left",  currentPos == OverlayService.POS_TOP_LEFT)
+        posGroup.addView(rbRight)
+        posGroup.addView(rbLeft)
+        posGroup.setOnCheckedChangeListener { _, id ->
+            val rb = posGroup.findViewById<RadioButton>(id)
+            if (rb != null && rb.isPressed) {
+                val pos = if (id == rbLeft.id) OverlayService.POS_TOP_LEFT else OverlayService.POS_TOP_RIGHT
+                prefs.edit().putString(OverlayService.KEY_POSITION, pos).apply()
+                restartOverlay()
             }
         }
         configCard.addView(posGroup)
-        rootLayout.addView(configCard)
+        root.addView(configCard)
+        root.addView(gap())
 
-        val spacer3 = TextView(this).apply { text = " " }
-        rootLayout.addView(spacer3)
-
-        // --- Card 5: Alignment Calibrator ---
-        val xOff = prefs.getInt(OverlayService.KEY_X_OFFSET, 40)
-        val yOff = prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)
-
-        val alignCard = createCompactCard("📍 HUD ALIGNMENT CALIBRATOR", "#00E5FF")
-
-        val offsetLabel = TextView(this).apply {
-            text = "Offset: X=$xOff, Y=$yOff"
-            textSize = 11f
-            setTextColor(Color.parseColor("#00E5FF"))
-            typeface = Typeface.MONOSPACE
-        }
+        // ── Card: Alignment ───────────────────────────────────────────────────
+        val alignCard = card("📍 HUD ALIGNMENT CALIBRATOR", YELLOW)
+        val offsetLabel = label(
+            "Offset: X=${prefs.getInt(OverlayService.KEY_X_OFFSET, 40)}, Y=${prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)}",
+            GREEN, 11f)
         alignCard.addView(offsetLabel)
 
-        val dpadLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-        }
-
-        fun updateOffset(dx: Int, dy: Int) {
-            val curX = prefs.getInt(OverlayService.KEY_X_OFFSET, 40)
-            val curY = prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)
-            val newX = (curX + dx).coerceIn(-500, 1500)
-            val newY = (curY + dy).coerceIn(-500, 1500)
-            prefs.edit().apply {
-                putInt(OverlayService.KEY_X_OFFSET, newX)
-                putInt(OverlayService.KEY_Y_OFFSET, newY)
-            }.apply()
-            offsetLabel.text = "Offset: X=$newX, Y=$newY"
+        fun nudge(dx: Int, dy: Int) {
+            val nx = (prefs.getInt(OverlayService.KEY_X_OFFSET, 40) + dx).coerceIn(-500, 1500)
+            val ny = (prefs.getInt(OverlayService.KEY_Y_OFFSET, 40) + dy).coerceIn(-500, 1500)
+            prefs.edit().putInt(OverlayService.KEY_X_OFFSET, nx).putInt(OverlayService.KEY_Y_OFFSET, ny).apply()
+            offsetLabel.text = "Offset: X=$nx, Y=$ny"
             sendBroadcast(Intent(OverlayService.ACTION_UPDATE_POSITION))
         }
 
-        val btnUp = Button(this).apply {
-            text = "▲ UP"
-            setBackgroundColor(Color.parseColor("#09111E"))
-            setTextColor(Color.parseColor("#FFE600"))
-            typeface = Typeface.MONOSPACE
-            textSize = 10f
-            setOnClickListener { updateOffset(0, -10) }
-        }
-        dpadLayout.addView(btnUp)
+        val dpad = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        dpad.addView(btn("▲ UP", YELLOW) { nudge(0, -10) })
+        val lr = row().apply { gravity = Gravity.CENTER_HORIZONTAL }
+        lr.addView(btn("◄ LEFT", YELLOW) { nudge(-10, 0) })
+        lr.addView(btn("RIGHT ►", YELLOW) { nudge(10, 0) })
+        dpad.addView(lr)
+        dpad.addView(btn("▼ DOWN", YELLOW) { nudge(0, 10) })
+        alignCard.addView(dpad)
 
-        val lrRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_HORIZONTAL
-        }
+        alignCard.addView(btn("[ RESET (40, 40) ]", RED) {
+            prefs.edit().putInt(OverlayService.KEY_X_OFFSET, 40).putInt(OverlayService.KEY_Y_OFFSET, 40).apply()
+            offsetLabel.text = "Offset: X=40, Y=40"
+            sendBroadcast(Intent(OverlayService.ACTION_UPDATE_POSITION))
+        })
+        root.addView(alignCard)
+        root.addView(gap())
 
-        val btnLeft = Button(this).apply {
-            text = "◄ LEFT"
-            setBackgroundColor(Color.parseColor("#09111E"))
-            setTextColor(Color.parseColor("#FFE600"))
-            typeface = Typeface.MONOSPACE
-            textSize = 10f
-            setOnClickListener { updateOffset(-10, 0) }
-        }
+        // ── Action Buttons ────────────────────────────────────────────────────
+        root.addView(btn("⚡ START CYBERPUNK HUD", YELLOW, textBlack = true) { startOverlayService() })
+        root.addView(btn("⏹  STOP CYBERPUNK HUD", RED) { stopOverlayService() })
 
-        val btnRight = Button(this).apply {
-            text = "RIGHT ►"
-            setBackgroundColor(Color.parseColor("#09111E"))
-            setTextColor(Color.parseColor("#FFE600"))
-            typeface = Typeface.MONOSPACE
-            textSize = 10f
-            setOnClickListener { updateOffset(10, 0) }
-        }
+        val sv = ScrollView(this).apply { addView(root) }
+        setContentView(sv)
 
-        lrRow.addView(btnLeft)
-        lrRow.addView(btnRight)
-        dpadLayout.addView(lrRow)
-
-        val btnDown = Button(this).apply {
-            text = "▼ DOWN"
-            setBackgroundColor(Color.parseColor("#09111E"))
-            setTextColor(Color.parseColor("#FFE600"))
-            typeface = Typeface.MONOSPACE
-            textSize = 10f
-            setOnClickListener { updateOffset(0, 10) }
-        }
-        dpadLayout.addView(btnDown)
-        alignCard.addView(dpadLayout)
-
-        val btnReset = Button(this).apply {
-            text = "[ RESET ALIGNMENT (40, 40) ]"
-            textSize = 9f
-            setBackgroundColor(Color.TRANSPARENT)
-            setTextColor(Color.parseColor("#FF0055"))
-            setOnClickListener {
-                prefs.edit().apply {
-                    putInt(OverlayService.KEY_X_OFFSET, 40)
-                    putInt(OverlayService.KEY_Y_OFFSET, 40)
-                }.apply()
-                offsetLabel.text = "Offset: X=40, Y=40"
-                sendBroadcast(Intent(OverlayService.ACTION_UPDATE_POSITION))
-            }
-        }
-        alignCard.addView(btnReset)
-        rootLayout.addView(alignCard)
-
-        val spacer4 = TextView(this).apply { text = "\n" }
-        rootLayout.addView(spacer4)
-
-        // --- Action Buttons ---
-        val btnStart = Button(this).apply {
-            text = "⚡ [ START CYBERPUNK HUD ]"
-            setBackgroundColor(Color.parseColor("#FFE600"))
-            setTextColor(Color.BLACK)
-            typeface = Typeface.MONOSPACE
-            setTypeface(typeface, Typeface.BOLD)
-            setOnClickListener { startOverlayService() }
-        }
-        rootLayout.addView(btnStart)
-
-        val btnStop = Button(this).apply {
-            text = "⏹️ [ STOP CYBERPUNK HUD ]"
-            setBackgroundColor(Color.parseColor("#FF0055"))
-            setTextColor(Color.WHITE)
-            typeface = Typeface.MONOSPACE
-            setTypeface(typeface, Typeface.BOLD)
-            setOnClickListener { stopOverlayService() }
-        }
-        rootLayout.addView(btnStop)
-
-        val scrollView = android.widget.ScrollView(this).apply {
-            addView(rootLayout)
-        }
-        setContentView(scrollView)
-
-        // Dynamically register the REFRESH_UI broadcast receiver
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(refreshUiReceiver, IntentFilter("com.example.dexoverlay.REFRESH_UI"), RECEIVER_NOT_EXPORTED)
+            registerReceiver(refreshUiReceiver,
+                IntentFilter("com.example.dexoverlay.REFRESH_UI"), RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(refreshUiReceiver, IntentFilter("com.example.dexoverlay.REFRESH_UI"))
         }
 
-        // Always auto-start the HUD service on launch if overlay permission is present
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
             startOverlayService()
         }
@@ -460,168 +242,188 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        try {
-            unregisterReceiver(refreshUiReceiver)
-        } catch (e: Exception) {}
+        try { unregisterReceiver(refreshUiReceiver) } catch (e: Exception) {}
     }
 
     override fun onResume() {
         super.onResume()
         checkAndRequestAllPermissions(forceTrigger = false)
-
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
             startOverlayService()
         }
     }
 
+    // ── Permission helpers ────────────────────────────────────────────────────
+
     private fun checkAndRequestAllPermissions(forceTrigger: Boolean) {
         val hasOverlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
-        val hasAccessibility = isAccessibilityServiceEnabled(this, HeadCursorAccessibilityService::class.java)
-
+        val hasAccessibility = isAccessibilityEnabled()
         val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
-        val deviceList = usbManager.deviceList.values
-        val glassesDevice = deviceList.find { device ->
-            device.vendorId == 0x3318 || device.productId in intArrayOf(0x0436, 0x0425, 0x0429)
+        val glassesDevice = usbManager.deviceList.values.find { d ->
+            d.vendorId == 0x3318 || d.productId in intArrayOf(0x0436, 0x0425, 0x0429)
         }
         val hasUsb = glassesDevice == null || usbManager.hasPermission(glassesDevice)
 
-        // Update UI status tags
         if (hasOverlay && hasAccessibility && hasUsb) {
             statusTag.text = "[ ACTIVE // ALL ACCESS OK ]"
-            statusTag.setTextColor(Color.parseColor("#00FF66"))
+            statusTag.setTextColor(Color.parseColor(GREEN))
             btnPermissionStatus.text = "✅ ALL PERMISSIONS ACQUIRED"
-            btnPermissionStatus.setBackgroundColor(Color.parseColor("#0B2213"))
-            btnPermissionStatus.setTextColor(Color.parseColor("#00FF66"))
+            btnPermissionStatus.setBackgroundColor(Color.parseColor(DIM))
+            btnPermissionStatus.setTextColor(Color.parseColor(GREEN))
         } else {
             statusTag.text = "[ PENDING AUTHORIZATION ]"
-            statusTag.setTextColor(Color.parseColor("#FF0055"))
+            statusTag.setTextColor(Color.parseColor(RED))
             btnPermissionStatus.text = "⚠️ TAP TO GRANT MISSING ACCESS"
-            btnPermissionStatus.setBackgroundColor(Color.parseColor("#2C0C12"))
-            btnPermissionStatus.setTextColor(Color.parseColor("#FF0055"))
+            btnPermissionStatus.setBackgroundColor(Color.parseColor(DIM))
+            btnPermissionStatus.setTextColor(Color.parseColor(RED))
         }
 
         if (forceTrigger) {
-            if (!hasOverlay) {
-                Toast.makeText(this, "Please authorize Overlay Permission", Toast.LENGTH_SHORT).show()
-                checkAndRequestOverlayPermission()
-                return
-            }
+            if (!hasOverlay) { requestOverlayPermission(); return }
             if (!hasAccessibility) {
-                Toast.makeText(this, "Please enable accessibility cursor driver", Toast.LENGTH_SHORT).show()
-                try {
-                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    startActivity(intent)
-                } catch (e: Exception) {}
+                Toast.makeText(this, "Enable DeX Head Cursor in Accessibility settings", Toast.LENGTH_LONG).show()
+                try { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } catch (e: Exception) {}
                 return
             }
             if (!hasUsb && glassesDevice != null) {
-                Toast.makeText(this, "Please authorize USB glasses connection", Toast.LENGTH_SHORT).show()
-                requestXrealUsbPermissionDirectly(glassesDevice)
-                return
+                requestUsbPermission(glassesDevice); return
             }
-            if (hasOverlay) {
-                startOverlayService()
-            }
+            if (hasOverlay) startOverlayService()
         }
     }
 
-    private fun isAccessibilityServiceEnabled(context: Context, service: Class<out android.accessibilityservice.AccessibilityService>): Boolean {
-        val expectedComponentName = ComponentName(context, service)
-        val enabledServicesSetting = Settings.Secure.getString(
-            context.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
-        val colonSplitter = TextUtils.SimpleStringSplitter(':')
-        colonSplitter.setString(enabledServicesSetting)
-        while (colonSplitter.hasNext()) {
-            val componentNameString = colonSplitter.next()
-            val enabledService = ComponentName.unflattenFromString(componentNameString)
-            if (enabledService != null && enabledService == expectedComponentName) {
-                return true
-            }
+    private fun isAccessibilityEnabled(): Boolean {
+        val expected = ComponentName(this, HeadCursorAccessibilityService::class.java)
+        val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+        val splitter = TextUtils.SimpleStringSplitter(':')
+        splitter.setString(enabled)
+        while (splitter.hasNext()) {
+            val cn = ComponentName.unflattenFromString(splitter.next())
+            if (cn != null && cn == expected) return true
         }
         return false
     }
 
-    private fun requestXrealUsbPermissionDirectly(device: UsbDevice) {
+    private fun requestUsbPermission(device: UsbDevice) {
         val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
-        val intent = Intent(XrealOneImuManager.ACTION_USB_PERMISSION).apply {
-            setPackage(packageName)
-        }
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             android.app.PendingIntent.FLAG_MUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
-        } else {
-            android.app.PendingIntent.FLAG_UPDATE_CURRENT
-        }
-        val pi = android.app.PendingIntent.getBroadcast(this, 0, intent, flags)
+        else android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        val pi = android.app.PendingIntent.getBroadcast(this, 0,
+            Intent(XrealOneImuManager.ACTION_USB_PERMISSION).apply { setPackage(packageName) }, flags)
         usbManager.requestPermission(device, pi)
     }
 
-    private fun createCompactCard(title: String, borderColorHex: String): LinearLayout {
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(16, 12, 16, 12)
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#09111E"))
-                setStroke(1, Color.parseColor(borderColorHex))
-                cornerRadius = 2f
-            }
+    private fun requestOverlayPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            startActivityForResult(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")), 101)
         }
-
-        val cardTitle = TextView(this).apply {
-            text = title
-            textSize = 12f
-            setTextColor(Color.parseColor(borderColorHex))
-            typeface = Typeface.MONOSPACE
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 0, 0, 6)
-        }
-        container.addView(cardTitle)
-        return container
-    }
-
-    private fun checkAndRequestOverlayPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!Settings.canDrawOverlays(this)) {
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName")
-                )
-                startActivityForResult(intent, 101)
-            } else {
-                Toast.makeText(this, "Permission Already Granted!", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun restartOverlayServiceIfRunning() {
-        stopOverlayService()
-        startOverlayService()
     }
 
     private fun startOverlayService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Please grant Overlay Permission first!", Toast.LENGTH_LONG).show()
-            checkAndRequestOverlayPermission()
-            return
+            requestOverlayPermission(); return
         }
-
         val intent = Intent(this, OverlayService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-        Toast.makeText(this, "Cyberpunk HUD Active!", Toast.LENGTH_SHORT).show()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
+        else startService(intent)
     }
 
     private fun stopOverlayService() {
-        val intent = Intent(this, OverlayService::class.java)
-        stopService(intent)
+        stopService(Intent(this, OverlayService::class.java))
     }
 
-    companion object {
-        const val ACTION_LOG_UPDATE = "com.example.dexoverlay.LOG_UPDATE"
-        const val EXTRA_LOG_MSG = "log_msg"
+    private fun restartOverlay() {
+        stopOverlayService()
+        startOverlayService()
+    }
+
+    // ── View factory helpers ──────────────────────────────────────────────────
+
+    private fun row() = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
+
+    private fun gap() = TextView(this).apply { text = " " }
+
+    private fun border(color: String, stroke: Int = 1) = GradientDrawable().apply {
+        setColor(Color.parseColor(BG_CARD))
+        setStroke(stroke, Color.parseColor(color))
+        cornerRadius = 3f
+    }
+
+    private fun label(text: String, color: String, size: Float,
+                      bold: Boolean = false, weight: Float = 0f): TextView =
+        TextView(this).apply {
+            this.text = text
+            textSize = size
+            setTextColor(Color.parseColor(color))
+            typeface = Typeface.MONOSPACE
+            if (bold) setTypeface(typeface, Typeface.BOLD)
+            if (weight > 0f) layoutParams = LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, weight)
+        }
+
+    private fun card(title: String, accentColor: String): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(16, 14, 16, 14)
+            background = border(accentColor)
+            addView(label(title, accentColor, 12f, bold = true).apply {
+                setPadding(0, 0, 0, 8)
+            })
+        }
+
+    private fun btn(text: String, color: String, textBlack: Boolean = false,
+                    onClick: () -> Unit): Button =
+        Button(this).apply {
+            this.text = text
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
+            textSize = 11f
+            if (textBlack) {
+                setBackgroundColor(Color.parseColor(color))
+                setTextColor(Color.BLACK)
+            } else {
+                setBackgroundColor(Color.parseColor(DIM))
+                setTextColor(Color.parseColor(color))
+            }
+            setOnClickListener { onClick() }
+        }
+
+    private fun radioBtn(text: String, checked: Boolean) = RadioButton(this).apply {
+        id = android.view.View.generateViewId()
+        this.text = text
+        isChecked = checked
+        setTextColor(Color.parseColor(GREEN))
+        typeface = Typeface.MONOSPACE
+        textSize = 11f
+        setPadding(0, 0, 24, 0)
+    }
+
+    private fun radioGroup(options: List<Pair<String,String>>, current: String,
+                           onPick: (String) -> Unit): RadioGroup {
+        val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        options.forEach { (value, label) ->
+            val rb = RadioButton(this).apply {
+                id = android.view.View.generateViewId()
+                text = label
+                isChecked = (value == current)
+                setTextColor(Color.WHITE)
+                typeface = Typeface.MONOSPACE
+                textSize = 10f
+            }
+            rg.addView(rb)
+        }
+        rg.setOnCheckedChangeListener { group, id ->
+            val rb = group.findViewById<RadioButton>(id)
+            if (rb != null && rb.isPressed) {
+                val idx = group.indexOfChild(rb)
+                if (idx in options.indices) onPick(options[idx].first)
+            }
+        }
+        return rg
     }
 }
