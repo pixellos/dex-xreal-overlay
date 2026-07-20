@@ -8,10 +8,14 @@ import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbManager
 import android.util.Log
+import java.io.BufferedReader
+import java.io.FileReader
 import java.io.InputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -134,13 +138,17 @@ class XrealOneImuManager(private val context: Context) {
         }
     }
 
-    // Engine 2: XREAL 1s TCP Network Client (169.254.2.1:52998)
+    // Engine 2: XREAL 1s TCP Network Client (169.254.2.1:52998 / Dynamic Subnet)
     private fun runTcpNetworkEngine() {
         while (isRunning) {
             try {
+                // Discover target IP and gateway dynamically
+                val discoveredHost = discoverTargetHost()
+                val targetPort = 52998
+
                 val s = Socket()
-                log("Connecting to XREAL 1s TCP Service (169.254.2.1:52998)...")
-                s.connect(InetSocketAddress("169.254.2.1", 52998), 2500)
+                log("Connecting to XREAL 1s TCP Service ($discoveredHost:$targetPort)...")
+                s.connect(InetSocketAddress(discoveredHost, targetPort), 3000)
                 s.soTimeout = 2000
                 tcpSocket = s
                 log("CONNECTED successfully to XREAL 1s TCP stream!")
@@ -182,6 +190,93 @@ class XrealOneImuManager(private val context: Context) {
                 }
             }
         }
+    }
+
+    // Dynamic Host and Routing Discovery (Zero Hardcoding)
+    private fun discoverTargetHost(): String {
+        var targetIp = "169.254.2.1" // Default fallback
+
+        // 1. Scan ARP Cache (/proc/net/arp)
+        try {
+            BufferedReader(FileReader("/proc/net/arp")).use { reader ->
+                var line: String?
+                // Skip header
+                reader.readLine()
+                while (reader.readLine().also { line = it } != null) {
+                    val tokens = line!!.split("\\s+".toRegex()).filter { it.isNotEmpty() }
+                    if (tokens.size >= 6) {
+                        val ip = tokens[0]
+                        val device = tokens[5].lowercase()
+                        if (device.contains("usb") || device.contains("rndis") || device.contains("eth") || device.contains("cdc")) {
+                            log("ARP Table match: found peer $ip on interface $device")
+                            targetIp = ip
+                            return targetIp
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            log("ARP Table read skipped: ${e.message}")
+        }
+
+        // 2. Scan Routing Table (/proc/net/route) to find default gateway on USB interface
+        try {
+            BufferedReader(FileReader("/proc/net/route")).use { reader ->
+                var line: String?
+                // Skip header
+                reader.readLine()
+                while (reader.readLine().also { line = it } != null) {
+                    val tokens = line!!.split("\\s+".toRegex()).filter { it.isNotEmpty() }
+                    if (tokens.size >= 3) {
+                        val iface = tokens[0].lowercase()
+                        if (iface.contains("usb") || iface.contains("rndis") || iface.contains("eth") || iface.contains("cdc")) {
+                            val gatewayHex = tokens[2]
+                            if (gatewayHex != "00000000") {
+                                // Parse little-endian hex to IP
+                                val valHex = gatewayHex.toLong(16)
+                                val ip = "${valHex and 0xFF}.${(valHex shr 8) and 0xFF}.${(valHex shr 16) and 0xFF}.${(valHex shr 24) and 0xFF}"
+                                log("Routing Table Match: found gateway $ip on interface $iface")
+                                targetIp = ip
+                                return targetIp
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            log("Routing Table read skipped: ${e.message}")
+        }
+
+        // 3. Fallback: Parse active interfaces to find local subnet and guess gateway
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val netInt = interfaces.nextElement()
+                val name = netInt.name.lowercase()
+                if (name.contains("usb") || name.contains("rndis") || name.contains("eth") || name.contains("cdc")) {
+                    val addrs = netInt.inetAddresses
+                    while (addrs.hasMoreElements()) {
+                        val addr = addrs.nextElement()
+                        if (!addr.isLoopbackAddress && addr.hostAddress.indexOf(':') < 0) {
+                            val host = addr.hostAddress
+                            log("Interface scanning fallback: found local address $host on interface $name")
+                            // Guess gateway is .1 of the subnet (e.g. 192.168.42.129 -> 192.168.42.1)
+                            val parts = host.split(".")
+                            if (parts.size == 4) {
+                                targetIp = "${parts[0]}.${parts[1]}.${parts[2]}.1"
+                                log("Guessed gateway address: $targetIp")
+                                return targetIp
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            log("Interface scanning skipped: ${e.message}")
+        }
+
+        log("Using target host: $targetIp")
+        return targetIp
     }
 
     // Engine 3: External UDP Socket Listener (Port 9090)
