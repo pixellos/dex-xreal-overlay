@@ -2,9 +2,9 @@
 
 > **Goal**: Transform XREAL 1s smart glasses and Samsung DeX into a hands-free Cyberpunk AR workspace featuring 3DoF IMU head-tracking mouse control, temple button action mapping, and a transparent HUD overlay.
 
-https://github.com/user-attachments/assets/Screen_Recording_20260720_191732_Chrome.mp4
+https://raw.githubusercontent.com/pixellos/dex-xreal-overlay/main/Screen_Recording_20260720_191732_Chrome.mp4
 
-<video src="Screen_Recording_20260720_191732_Chrome.mp4" controls width="100%"></video>
+<video src="https://raw.githubusercontent.com/pixellos/dex-xreal-overlay/main/Screen_Recording_20260720_191732_Chrome.mp4" controls="controls" style="max-width: 100%;"></video>
 
 ---
 
