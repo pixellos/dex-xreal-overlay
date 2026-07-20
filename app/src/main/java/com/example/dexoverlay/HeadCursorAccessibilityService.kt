@@ -70,13 +70,12 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
     // Volume Down hold state
     private var isVolDownHeld = false
-    private var hasScrolledDuringVolDown = false
-    private var isScrollModeLatched = false   // true = scroll mode is TOGGLED ON
+    private var isScrollModeLatched = false
     private var isVolDownLongPressedTriggered = false
     private val volDownLongPressRunnable = Runnable {
-        if (isVolDownHeld && !hasScrolledDuringVolDown) {
+        if (isVolDownHeld) {
             isVolDownLongPressedTriggered = true
-            // Also cancel scroll mode if active when toggling mouse mode
+            // Cancel scroll mode if active
             if (isScrollModeLatched) {
                 isScrollModeLatched = false
                 notifyScrollMode(false)
@@ -145,7 +144,6 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     val x = intent.getFloatExtra(EXTRA_X, 960f)
                     val y = intent.getFloatExtra(EXTRA_Y, 540f)
                     val deltaY = intent.getFloatExtra(EXTRA_SCROLL_DELTA_Y, 0f)
-                    hasScrolledDuringVolDown = true
                     log("RECEIVER_SCROLL: Vertical scroll at ($x, $y), deltaY=$deltaY")
                     performSystemScroll(x, y, deltaY)
                 }
@@ -166,7 +164,6 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     }
 
     fun performDirectScroll(x: Float, y: Float, deltaY: Float) {
-        hasScrolledDuringVolDown = true
         performSystemScroll(x, y, deltaY)
     }
 
@@ -519,18 +516,32 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             if (action == KeyEvent.ACTION_DOWN) {
                 if (event.repeatCount == 0) {
                     isVolDownHeld = true
-                    hasScrolledDuringVolDown = false
                     isVolDownLongPressedTriggered = false
 
-                    // 3s long press → toggle mouse mode
+                    // 3s hold → toggle mouse mode
                     mainHandler.removeCallbacks(volDownLongPressRunnable)
                     mainHandler.postDelayed(volDownLongPressRunnable, 3000L)
+
+                    // Immediately activate scroll mode on press
+                    if (volDownHoldAction == OverlayService.ACTION_VAL_SCROLL) {
+                        isScrollModeLatched = true
+                        notifyScrollMode(true)
+                        log("KEY INTERCEPT: Vol Down HOLD START → Scroll mode ON ▶")
+                    }
                 }
                 if (mouseModeEnabled) return true
             } else if (action == KeyEvent.ACTION_UP) {
                 isVolDownHeld = false
                 mainHandler.removeCallbacks(volDownLongPressRunnable)
 
+                // Stop scroll on release
+                if (isScrollModeLatched) {
+                    isScrollModeLatched = false
+                    notifyScrollMode(false)
+                    log("KEY INTERCEPT: Vol Down HOLD END → Scroll mode OFF ■")
+                }
+
+                // Count taps for multi-tap gestures (4x = crosshair toggle)
                 mainHandler.removeCallbacks(volDownTapRunnable)
                 val now = System.currentTimeMillis()
                 if (now - lastVolDownTapTime < 350L) {
@@ -546,36 +557,15 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                 if (volDownTapCount == 4) {
                     volDownTapCount = 0
                     if (quadAction == OverlayService.ACTION_VAL_TOGGLE_MOUSE) {
-                        log("KEY INTERCEPT: Vol Down 4x QUADRUPLE CLICK → Toggle Mouse Mode / Crosshair ON/OFF")
+                        log("KEY INTERCEPT: Vol Down 4x → Toggle Crosshair ON/OFF")
                         sendBroadcast(Intent(ACTION_TOGGLE_MOUSE_MODE).apply { setPackage(packageName) })
                     }
-                    hasScrolledDuringVolDown = false
                     isVolDownLongPressedTriggered = false
                     return true
                 }
 
-                if (volDownTapCount == 3) {
-                    mainHandler.postDelayed(volDownTapRunnable, 250L)
-                    return true
-                }
-
-                if (!isVolDownLongPressedTriggered) {
-                    if (volDownHoldAction == OverlayService.ACTION_VAL_SCROLL) {
-                        // TOGGLE scroll mode: tap once to START, tap again to STOP
-                        val scrollNowActive = !isScrollModeLatched
-                        isScrollModeLatched = scrollNowActive
-                        notifyScrollMode(scrollNowActive)
-                        hasScrolledDuringVolDown = scrollNowActive
-                        log("KEY INTERCEPT: Vol Down TAP → Scroll mode TOGGLE → ${if (scrollNowActive) "ON" else "OFF"}")
-                    } else if (mouseModeEnabled) {
-                        log("KEY INTERCEPT: Vol Down UP → action: $volDownAction")
-                        triggerAction(volDownAction)
-                    }
-                }
-
-                val consumed = mouseModeEnabled || isVolDownLongPressedTriggered || hasScrolledDuringVolDown
                 isVolDownLongPressedTriggered = false
-                if (consumed) return true
+                if (mouseModeEnabled) return true
             }
             return false
         }
