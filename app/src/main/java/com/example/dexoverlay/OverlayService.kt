@@ -35,8 +35,12 @@ class OverlayService : Service() {
     private var navTraceTextView: TextView? = null
     private var windowLayoutParams: WindowManager.LayoutParams? = null
 
-    private var cursorView: TextView? = null
+    // Cursor Components
+    private var cursorLayout: LinearLayout? = null
+    private var cursorIconView: TextView? = null
+    private var cursorModeLabel: TextView? = null
     private var cursorParams: WindowManager.LayoutParams? = null
+    
     private var cursorX = 960f
     private var cursorY = 540f
 
@@ -50,6 +54,10 @@ class OverlayService : Service() {
             updateClock()
             handler.postDelayed(this, 1000)
         }
+    }
+
+    private val hideModeLabelRunnable = Runnable {
+        cursorModeLabel?.visibility = View.GONE
     }
 
     // Battery Monitor Receiver
@@ -125,11 +133,17 @@ class OverlayService : Service() {
         }
     }
 
-    // Key Tap Trigger Receiver
-    private val tapTriggerReceiver = object : BroadcastReceiver() {
+    // Dynamic Action Trigger Receiver
+    private val actionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == ACTION_TRIGGER_TAP) {
-                onSingleTap()
+            when (intent?.action) {
+                HeadCursorAccessibilityService.ACTION_TRIGGER_ACTION -> {
+                    val actionName = intent.getStringExtra(HeadCursorAccessibilityService.EXTRA_ACTION_NAME) ?: "NONE"
+                    executeAction(actionName)
+                }
+                HeadCursorAccessibilityService.ACTION_TOGGLE_MOUSE_MODE -> {
+                    toggleMouseMode()
+                }
             }
         }
     }
@@ -138,17 +152,23 @@ class OverlayService : Service() {
         super.onCreate()
         startForegroundServiceNotification()
         
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), RECEIVER_NOT_EXPORTED)
-            registerReceiver(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE), RECEIVER_NOT_EXPORTED)
-            registerReceiver(positionReceiver, IntentFilter(ACTION_UPDATE_POSITION), RECEIVER_NOT_EXPORTED)
-            registerReceiver(tapTriggerReceiver, IntentFilter(ACTION_TRIGGER_TAP), RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-            registerReceiver(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE))
-            registerReceiver(positionReceiver, IntentFilter(ACTION_UPDATE_POSITION))
-            registerReceiver(tapTriggerReceiver, IntentFilter(ACTION_TRIGGER_TAP))
+        val filterTiramisu = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        val registerFlag = if (filterTiramisu) RECEIVER_NOT_EXPORTED else 0
+
+        fun register(receiver: BroadcastReceiver, filter: IntentFilter) {
+            if (filterTiramisu) {
+                registerReceiver(receiver, filter, registerFlag)
+            } else {
+                registerReceiver(receiver, filter)
+            }
         }
+
+        register(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        register(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE))
+        register(positionReceiver, IntentFilter(ACTION_UPDATE_POSITION))
+        register(actionReceiver, IntentFilter(HeadCursorAccessibilityService.ACTION_TRIGGER_ACTION).apply {
+            addAction(HeadCursorAccessibilityService.ACTION_TOGGLE_MOUSE_MODE)
+        })
 
         setupOverlayWindow()
         setupHeadTrackedCursor()
@@ -245,15 +265,37 @@ class OverlayService : Service() {
     private fun setupHeadTrackedCursor() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, true)
+        val mouseModeEnabled = prefs.getBoolean(KEY_MOUSE_MODE_ENABLED, true)
         if (!enableHeadCursor) return
 
-        cursorView = TextView(this).apply {
-            text = "✛"
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setBackgroundColor(Color.TRANSPARENT)
+            visibility = if (mouseModeEnabled) View.VISIBLE else View.GONE
+        }
+
+        cursorIconView = TextView(this).apply {
+            text = getCursorIconForCurrentMode()
             textSize = 28f
-            setTextColor(Color.parseColor("#00E5FF"))
-            setShadowLayer(10f, 0f, 0f, Color.parseColor("#00E5FF"))
+            setTextColor(getCursorColorForCurrentMode())
+            setShadowLayer(10f, 0f, 0f, getCursorColorForCurrentMode())
             gravity = Gravity.CENTER
         }
+        container.addView(cursorIconView)
+
+        cursorModeLabel = TextView(this).apply {
+            textSize = 10f
+            setTextColor(Color.parseColor("#FFE600"))
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
+            setShadowLayer(6f, 0f, 0f, Color.parseColor("#88FFE600"))
+            visibility = View.GONE
+            setPadding(0, 4, 0, 0)
+        }
+        container.addView(cursorModeLabel)
+
+        cursorLayout = container
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -276,9 +318,110 @@ class OverlayService : Service() {
         cursorParams = params
 
         try {
-            windowManager.addView(cursorView, cursorParams)
+            windowManager.addView(cursorLayout, cursorParams)
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    private fun getCursorIconForCurrentMode(): String {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val mouseModeEnabled = prefs.getBoolean(KEY_MOUSE_MODE_ENABLED, true)
+        if (!mouseModeEnabled) return "❌"
+        
+        // Return custom icons based on actions mapped to Volume buttons
+        val volUp = prefs.getString(KEY_VOL_UP_ACTION, "LEFT_CLICK")
+        if (volUp == ACTION_VAL_RECENTER) return "🎯"
+        if (volUp == ACTION_VAL_TOGGLE_HUD) return "👁"
+        
+        return "✛"
+    }
+
+    private fun getCursorColorForCurrentMode(): Int {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val mouseModeEnabled = prefs.getBoolean(KEY_MOUSE_MODE_ENABLED, true)
+        if (!mouseModeEnabled) return Color.parseColor("#FF0055")
+
+        val volUp = prefs.getString(KEY_VOL_UP_ACTION, "LEFT_CLICK")
+        return when (volUp) {
+            ACTION_VAL_RECENTER -> Color.parseColor("#FFE600")
+            ACTION_VAL_TOGGLE_HUD -> Color.parseColor("#FF0055")
+            else -> Color.parseColor("#00E5FF")
+        }
+    }
+
+    private fun updateCursorAppearance() {
+        handler.post {
+            cursorIconView?.text = getCursorIconForCurrentMode()
+            val color = getCursorColorForCurrentMode()
+            cursorIconView?.setTextColor(color)
+            cursorIconView?.setShadowLayer(10f, 0f, 0f, color)
+        }
+    }
+
+    private fun toggleMouseMode() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val current = prefs.getBoolean(KEY_MOUSE_MODE_ENABLED, true)
+        val next = !current
+        prefs.edit().putBoolean(KEY_MOUSE_MODE_ENABLED, next).apply()
+
+        handler.post {
+            cursorModeLabel?.visibility = View.VISIBLE
+            handler.removeCallbacks(hideModeLabelRunnable)
+
+            if (next) {
+                cursorLayout?.visibility = View.VISIBLE
+                cursorModeLabel?.text = "[ MOUSE MODE: ON ]"
+                cursorModeLabel?.setTextColor(Color.parseColor("#00FF66"))
+                updateCursorAppearance()
+                handler.postDelayed(hideModeLabelRunnable, 2000)
+            } else {
+                cursorModeLabel?.text = "[ MOUSE MODE: OFF ]"
+                cursorModeLabel?.setTextColor(Color.parseColor("#FF0055"))
+                cursorIconView?.text = "❌"
+                cursorIconView?.setTextColor(Color.parseColor("#FF0055"))
+                cursorIconView?.setShadowLayer(10f, 0f, 0f, Color.parseColor("#FF0055"))
+                handler.postDelayed({
+                    cursorLayout?.visibility = View.GONE
+                }, 2000)
+            }
+        }
+        
+        sendBroadcast(Intent("com.example.dexoverlay.REFRESH_UI"))
+    }
+
+    private fun executeAction(actionName: String) {
+        handler.post {
+            // Flash color white feedback for action
+            cursorIconView?.setTextColor(Color.parseColor("#FFFFFF"))
+            handler.postDelayed({ cursorIconView?.setTextColor(getCursorColorForCurrentMode()) }, 150)
+
+            when (actionName) {
+                ACTION_VAL_LEFT_CLICK -> {
+                    val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
+                        putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
+                        putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
+                        putExtra(HeadCursorAccessibilityService.EXTRA_IS_RIGHT, false)
+                    }
+                    sendBroadcast(clickIntent)
+                }
+                ACTION_VAL_RIGHT_CLICK -> {
+                    val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
+                        putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
+                        putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
+                        putExtra(HeadCursorAccessibilityService.EXTRA_IS_RIGHT, true)
+                    }
+                    sendBroadcast(clickIntent)
+                }
+                ACTION_VAL_TOGGLE_HUD -> {
+                    isHudVisible = !isHudVisible
+                    overlayView?.visibility = if (isHudVisible) View.VISIBLE else View.GONE
+                }
+                ACTION_VAL_RECENTER -> {
+                    cursorX = 960f
+                    cursorY = 540f
+                }
+            }
         }
     }
 
@@ -303,36 +446,9 @@ class OverlayService : Service() {
             params.y = cursorY.toInt()
             handler.post {
                 try {
-                    cursorView?.let { v -> windowManager.updateViewLayout(v, params) }
+                    cursorLayout?.let { v -> windowManager.updateViewLayout(v, params) }
                 } catch (e: Exception) {
                     e.printStackTrace()
-                }
-            }
-        }
-    }
-
-    private fun onSingleTap() {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val singleTapAction = prefs.getString(KEY_SINGLE_TAP_ACTION, SINGLE_TAP_ACTION_CLICK) ?: SINGLE_TAP_ACTION_CLICK
-        handler.post {
-            cursorView?.setTextColor(Color.parseColor("#FFE600"))
-            handler.postDelayed({ cursorView?.setTextColor(Color.parseColor("#00E5FF")) }, 200)
-
-            when (singleTapAction) {
-                SINGLE_TAP_ACTION_TOGGLE_HUD -> {
-                    isHudVisible = !isHudVisible
-                    overlayView?.visibility = if (isHudVisible) View.VISIBLE else View.GONE
-                }
-                SINGLE_TAP_ACTION_RECENTER -> {
-                    cursorX = 960f
-                    cursorY = 540f
-                }
-                else -> {
-                    val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
-                        putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
-                        putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
-                    }
-                    sendBroadcast(clickIntent)
                 }
             }
         }
@@ -368,20 +484,21 @@ class OverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacks(clockRunnable)
+        handler.removeCallbacks(hideModeLabelRunnable)
         imuManager?.stop()
         try {
             unregisterReceiver(batteryReceiver)
             unregisterReceiver(navReceiver)
             unregisterReceiver(positionReceiver)
-            unregisterReceiver(tapTriggerReceiver)
+            unregisterReceiver(actionReceiver)
         } catch (e: Exception) {
             e.printStackTrace()
         }
         if (overlayView != null) {
             windowManager.removeView(overlayView)
         }
-        if (cursorView != null) {
-            try { windowManager.removeView(cursorView) } catch (e: Exception) {}
+        if (cursorLayout != null) {
+            try { windowManager.removeView(cursorLayout) } catch (e: Exception) {}
         }
     }
 
@@ -396,6 +513,17 @@ class OverlayService : Service() {
         const val KEY_ENABLE_HEAD_CURSOR = "enable_head_cursor"
         const val KEY_SINGLE_TAP_ACTION = "single_tap_action"
         const val KEY_TRACKING_ENGINE = "tracking_engine"
+
+        // New properties for Vol Up / Vol Down / Mouse Mode mapping
+        const val KEY_VOL_UP_ACTION = "vol_up_action"
+        const val KEY_VOL_DOWN_ACTION = "vol_down_action"
+        const val KEY_MOUSE_MODE_ENABLED = "mouse_mode_enabled"
+
+        const val ACTION_VAL_LEFT_CLICK = "LEFT_CLICK"
+        const val ACTION_VAL_RIGHT_CLICK = "RIGHT_CLICK"
+        const val ACTION_VAL_TOGGLE_HUD = "TOGGLE_HUD"
+        const val ACTION_VAL_RECENTER = "RECENTER"
+        const val ACTION_VAL_NONE = "NONE"
 
         const val POS_TOP_RIGHT = "TOP_RIGHT"
         const val POS_TOP_LEFT = "TOP_LEFT"

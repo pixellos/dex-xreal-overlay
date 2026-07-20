@@ -1,9 +1,11 @@
 package com.example.dexoverlay
 
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -29,6 +31,16 @@ class MainActivity : Activity() {
 
     private lateinit var statusTag: TextView
     private lateinit var btnPermissionStatus: Button
+    private lateinit var cbMouseMode: CheckBox
+
+    private val refreshUiReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.example.dexoverlay.REFRESH_UI") {
+                val prefs = getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
+                cbMouseMode.isChecked = prefs.getBoolean(OverlayService.KEY_MOUSE_MODE_ENABLED, true)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -119,92 +131,117 @@ class MainActivity : Activity() {
         val spacer_mode = TextView(this).apply { text = " " }
         rootLayout.addView(spacer_mode)
 
-        // --- Card 3: Quick Action Selection ---
-        val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, true)
-        val singleTapAction = prefs.getString(OverlayService.KEY_SINGLE_TAP_ACTION, OverlayService.SINGLE_TAP_ACTION_CLICK) ?: OverlayService.SINGLE_TAP_ACTION_CLICK
-        val actionCard = createCompactCard("🔘 QUICK ACTION SELECTION", "#00E5FF")
+        // --- Card 3: Volume Buttons Action Mapper ---
+        val mapperCard = createCompactCard("🕹️ VOLUME BUTTONS ACTION MAPPER", "#00E5FF")
 
-        val cbHeadCursor = CheckBox(this).apply {
-            text = " Enable Motion Head Cursor"
+        // Mouse Mode Toggle
+        cbMouseMode = CheckBox(this).apply {
+            text = " Enable Head Cursor Clicking (Mouse Mode)"
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             textSize = 12f
-            isChecked = enableHeadCursor
+            isChecked = prefs.getBoolean(OverlayService.KEY_MOUSE_MODE_ENABLED, true)
             setOnCheckedChangeListener { buttonView, isChecked ->
                 if (buttonView.isPressed) {
-                    prefs.edit().putBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, isChecked).apply()
+                    prefs.edit().putBoolean(OverlayService.KEY_MOUSE_MODE_ENABLED, isChecked).apply()
                     restartOverlayServiceIfRunning()
                 }
             }
         }
-        actionCard.addView(cbHeadCursor)
+        mapperCard.addView(cbMouseMode)
 
-        val btnAccessibility = Button(this).apply {
-            text = "👆 MANUALLY OPEN ACCESSIBILITY SYSTEM SETTINGS"
-            setBackgroundColor(Color.parseColor("#0C182B"))
-            setTextColor(Color.parseColor("#00E5FF"))
+        val spacerMapper = TextView(this).apply { text = " " }
+        mapperCard.addView(spacerMapper)
+
+        // Volume Up Action Configuration
+        val labelVolUp = TextView(this).apply {
+            text = "Volume Up Press Action:"
+            setTextColor(Color.parseColor("#FFE600"))
+            textSize = 11f
             typeface = Typeface.MONOSPACE
-            textSize = 10f
-            setOnClickListener {
-                try {
-                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    startActivity(intent)
-                    Toast.makeText(this@MainActivity, "Enable 'DeX Head Cursor Accessibility Driver'", Toast.LENGTH_LONG).show()
-                } catch (e: Exception) {
-                    Toast.makeText(this@MainActivity, "Could not open Accessibility Settings", Toast.LENGTH_SHORT).show()
-                }
+        }
+        mapperCard.addView(labelVolUp)
+
+        val rgVolUp = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        val actions = listOf(
+            OverlayService.ACTION_VAL_LEFT_CLICK to "Execute Left Click",
+            OverlayService.ACTION_VAL_RIGHT_CLICK to "Execute Right Click (Long Press)",
+            OverlayService.ACTION_VAL_TOGGLE_HUD to "Toggle HUD Overlay On/Off",
+            OverlayService.ACTION_VAL_RECENTER to "Recenter Cursor to Center",
+            OverlayService.ACTION_VAL_NONE to "None (Disable Action)"
+        )
+
+        val currentVolUp = prefs.getString(OverlayService.KEY_VOL_UP_ACTION, OverlayService.ACTION_VAL_LEFT_CLICK)
+        val volUpButtons = mutableListOf<RadioButton>()
+
+        for ((actionVal, actionLabel) in actions) {
+            val rb = RadioButton(this).apply {
+                id = View.generateViewId()
+                text = actionLabel
+                setTextColor(Color.WHITE)
+                textSize = 10f
+                typeface = Typeface.MONOSPACE
+                isChecked = (currentVolUp == actionVal)
             }
+            rgVolUp.addView(rb)
+            volUpButtons.add(rb)
         }
-        actionCard.addView(btnAccessibility)
-
-        val tapGroup = RadioGroup(this).apply {
-            orientation = RadioGroup.VERTICAL
-        }
-
-        val rbClick = RadioButton(this).apply {
-            id = View.generateViewId()
-            text = "Execute Click at Head Cursor Position"
-            setTextColor(Color.WHITE)
-            textSize = 11f
-            typeface = Typeface.MONOSPACE
-            isChecked = (singleTapAction == OverlayService.SINGLE_TAP_ACTION_CLICK)
-        }
-        val rbToggleHud = RadioButton(this).apply {
-            id = View.generateViewId()
-            text = "Toggle HUD Overlay On/Off"
-            setTextColor(Color.WHITE)
-            textSize = 11f
-            typeface = Typeface.MONOSPACE
-            isChecked = (singleTapAction == OverlayService.SINGLE_TAP_ACTION_TOGGLE_HUD)
-        }
-        val rbRecenter = RadioButton(this).apply {
-            id = View.generateViewId()
-            text = "Recenter Cursor to Center"
-            setTextColor(Color.WHITE)
-            textSize = 11f
-            typeface = Typeface.MONOSPACE
-            isChecked = (singleTapAction == OverlayService.SINGLE_TAP_ACTION_RECENTER)
-        }
-
-        tapGroup.addView(rbClick)
-        tapGroup.addView(rbToggleHud)
-        tapGroup.addView(rbRecenter)
-
-        tapGroup.setOnCheckedChangeListener { group, checkedId ->
+        rgVolUp.setOnCheckedChangeListener { group, checkedId ->
             val checkedRb = group.findViewById<RadioButton>(checkedId)
             if (checkedRb != null && checkedRb.isPressed) {
-                val selectedAction = when (checkedId) {
-                    rbToggleHud.id -> OverlayService.SINGLE_TAP_ACTION_TOGGLE_HUD
-                    rbRecenter.id -> OverlayService.SINGLE_TAP_ACTION_RECENTER
-                    else -> OverlayService.SINGLE_TAP_ACTION_CLICK
+                val index = group.indexOfChild(checkedRb)
+                if (index in actions.indices) {
+                    val chosen = actions[index].first
+                    prefs.edit().putString(OverlayService.KEY_VOL_UP_ACTION, chosen).apply()
+                    Toast.makeText(this@MainActivity, "Vol Up action updated!", Toast.LENGTH_SHORT).show()
+                    restartOverlayServiceIfRunning()
                 }
-                prefs.edit().putString(OverlayService.KEY_SINGLE_TAP_ACTION, selectedAction).apply()
-                Toast.makeText(this, "Quick Action Updated!", Toast.LENGTH_SHORT).show()
-                restartOverlayServiceIfRunning()
             }
         }
-        actionCard.addView(tapGroup)
-        rootLayout.addView(actionCard)
+        mapperCard.addView(rgVolUp)
+
+        val spacerMapper2 = TextView(this).apply { text = "\n" }
+        mapperCard.addView(spacerMapper2)
+
+        // Volume Down Action Configuration
+        val labelVolDown = TextView(this).apply {
+            text = "Volume Down Press Action:"
+            setTextColor(Color.parseColor("#FFE600"))
+            textSize = 11f
+            typeface = Typeface.MONOSPACE
+        }
+        mapperCard.addView(labelVolDown)
+
+        val rgVolDown = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        val currentVolDown = prefs.getString(OverlayService.KEY_VOL_DOWN_ACTION, OverlayService.ACTION_VAL_RIGHT_CLICK)
+        val volDownButtons = mutableListOf<RadioButton>()
+
+        for ((actionVal, actionLabel) in actions) {
+            val rb = RadioButton(this).apply {
+                id = View.generateViewId()
+                text = actionLabel
+                setTextColor(Color.WHITE)
+                textSize = 10f
+                typeface = Typeface.MONOSPACE
+                isChecked = (currentVolDown == actionVal)
+            }
+            rgVolDown.addView(rb)
+            volDownButtons.add(rb)
+        }
+        rgVolDown.setOnCheckedChangeListener { group, checkedId ->
+            val checkedRb = group.findViewById<RadioButton>(checkedId)
+            if (checkedRb != null && checkedRb.isPressed) {
+                val index = group.indexOfChild(checkedRb)
+                if (index in actions.indices) {
+                    val chosen = actions[index].first
+                    prefs.edit().putString(OverlayService.KEY_VOL_DOWN_ACTION, chosen).apply()
+                    Toast.makeText(this@MainActivity, "Vol Down action updated!", Toast.LENGTH_SHORT).show()
+                    restartOverlayServiceIfRunning()
+                }
+            }
+        }
+        mapperCard.addView(rgVolDown)
+        rootLayout.addView(mapperCard)
 
         val spacer2 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer2)
@@ -408,17 +445,30 @@ class MainActivity : Activity() {
         }
         setContentView(scrollView)
 
-        // CRITICAL: Always auto-start the HUD service on launch if overlay permission is present, matching v6.10!
+        // Dynamically register the REFRESH_UI broadcast receiver
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(refreshUiReceiver, IntentFilter("com.example.dexoverlay.REFRESH_UI"), RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(refreshUiReceiver, IntentFilter("com.example.dexoverlay.REFRESH_UI"))
+        }
+
+        // Always auto-start the HUD service on launch if overlay permission is present
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
             startOverlayService()
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            unregisterReceiver(refreshUiReceiver)
+        } catch (e: Exception) {}
     }
 
     override fun onResume() {
         super.onResume()
         checkAndRequestAllPermissions(forceTrigger = false)
 
-        // CRITICAL: Always auto-start on resume as well to match v6.10!
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
             startOverlayService()
         }
