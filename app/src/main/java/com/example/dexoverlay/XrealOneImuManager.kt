@@ -54,6 +54,7 @@ class XrealOneImuManager(private val context: Context) {
         Log.d("XrealOneImu", msg)
         LogBuffer.add(msg)
         val intent = Intent(MainActivity.ACTION_LOG_UPDATE).apply {
+            setPackage(context.packageName)
             putExtra(MainActivity.EXTRA_LOG_MSG, msg)
         }
         context.sendBroadcast(intent)
@@ -65,6 +66,11 @@ class XrealOneImuManager(private val context: Context) {
         isRunning = true
 
         stopThreadsInternal()
+
+        if (isReceiverRegistered) {
+            try { context.unregisterReceiver(usbReceiver) } catch (e: Exception) {}
+            isReceiverRegistered = false
+        }
 
         // Register USB permission receiver dynamically
         try {
@@ -393,8 +399,8 @@ class XrealOneImuManager(private val context: Context) {
                     val addrs = netInt.inetAddresses
                     while (addrs.hasMoreElements()) {
                         val addr = addrs.nextElement()
-                        if (!addr.isLoopbackAddress && addr.hostAddress.indexOf(':') < 0) {
-                            val host = addr.hostAddress
+                        val host = addr.hostAddress
+                        if (!addr.isLoopbackAddress && host != null && !host.contains(':')) {
                             log("DISCOVERY: Matching local IP: $host on interface $name")
                             val parts = host.split(".")
                             if (parts.size == 4) {

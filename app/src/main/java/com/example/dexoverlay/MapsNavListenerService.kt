@@ -18,6 +18,7 @@ class MapsNavListenerService : NotificationListenerService() {
             if (title.isNotEmpty() || text.isNotEmpty()) {
                 val arrow = parseVectorArrow("$title $text")
                 val intent = Intent(ACTION_NAV_UPDATE).apply {
+                    setPackage(packageName)
                     putExtra(EXTRA_IS_NAV_ACTIVE, true)
                     putExtra(EXTRA_NAV_ARROW, arrow)
                     putExtra(EXTRA_NAV_TITLE, title)
@@ -45,6 +46,7 @@ class MapsNavListenerService : NotificationListenerService() {
         super.onNotificationRemoved(sbn)
         if (sbn?.packageName == "com.google.android.apps.maps") {
             val intent = Intent(ACTION_NAV_UPDATE).apply {
+                setPackage(packageName)
                 putExtra(EXTRA_IS_NAV_ACTIVE, false)
             }
             sendBroadcast(intent)
