@@ -346,7 +346,7 @@ class OverlayService : Service() {
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Cyberpunk HUD & XREAL 1s Active")
-            .setContentText("XREAL 1s Port 52998 TCP / Port 9090 UDP Listening")
+            .setContentText("Unified XREAL 1s Tracking Active")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
 
@@ -382,6 +382,7 @@ class OverlayService : Service() {
         const val KEY_Y_OFFSET = "hud_y_offset"
         const val KEY_ENABLE_HEAD_CURSOR = "enable_head_cursor"
         const val KEY_SINGLE_TAP_ACTION = "single_tap_action"
+        const val KEY_TRACKING_ENGINE = "tracking_engine"
 
         const val POS_TOP_RIGHT = "TOP_RIGHT"
         const val POS_TOP_LEFT = "TOP_LEFT"
@@ -389,6 +390,10 @@ class OverlayService : Service() {
         const val SINGLE_TAP_ACTION_CLICK = "CLICK"
         const val SINGLE_TAP_ACTION_TOGGLE_HUD = "TOGGLE_HUD"
         const val SINGLE_TAP_ACTION_RECENTER = "RECENTER"
+
+        const val ENGINE_USB = "USB"
+        const val ENGINE_TCP = "TCP"
+        const val ENGINE_UDP = "UDP"
 
         const val ACTION_UPDATE_POSITION = "com.example.dexoverlay.UPDATE_POSITION"
     }

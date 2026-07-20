@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -36,7 +37,7 @@ class MainActivity : Activity() {
                 val logMsg = intent.getStringExtra(EXTRA_LOG_MSG) ?: ""
                 mainHandler.post {
                     val currentText = debugTextView?.text?.toString() ?: ""
-                    val lines = currentText.split("\n").takeLast(6).toMutableList()
+                    val lines = currentText.split("\n").takeLast(8).toMutableList()
                     lines.add("> $logMsg")
                     debugTextView?.text = lines.joinToString("\n")
                 }
@@ -77,7 +78,7 @@ class MainActivity : Activity() {
         }
 
         val headerText = TextView(this).apply {
-            text = "CYBERDECK v555 // HUD OS"
+            text = "CYBERDECK v556 // HUD OS"
             textSize = 14f
             setTextColor(Color.parseColor("#FFE600"))
             typeface = Typeface.MONOSPACE
@@ -87,7 +88,7 @@ class MainActivity : Activity() {
         headerCard.addView(headerText)
 
         val statusTag = TextView(this).apply {
-            text = "[ XREAL 1s CDC-ECM ACTIVE ]"
+            text = "[ XREAL 1s DEVELOPER MODE ]"
             textSize = 10f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -98,13 +99,97 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
-        // --- Card 1: XREAL 1s Hardware & System Click Driver ---
-        val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, true)
+        // --- Card 1: XREAL 1s Developer Selector ---
+        val selectedEngine = prefs.getString(OverlayService.KEY_TRACKING_ENGINE, OverlayService.ENGINE_USB) ?: OverlayService.ENGINE_USB
+        val devCard = createCompactCard("👓 XREAL 1s TRACKING ENGINE SELECTOR", "#00E5FF")
 
-        val connCard = createCompactCard("👓 XREAL 1s TCP & SOCKET RECEIVER", "#00E5FF")
+        val engineGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+            setPadding(0, 8, 0, 8)
+        }
+
+        val rbUsb = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = "Engine 1: XREAL USB HID Mode (Direct USB Cable)"
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            typeface = Typeface.MONOSPACE
+            isChecked = (selectedEngine == OverlayService.ENGINE_USB)
+        }
+        val rbTcp = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = "Engine 2: XREAL TCP Network Client (169.254.2.1:52998)"
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            typeface = Typeface.MONOSPACE
+            isChecked = (selectedEngine == OverlayService.ENGINE_TCP)
+        }
+        val rbUdp = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = "Engine 3: External UDP Socket Listener (Port 9090)"
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            typeface = Typeface.MONOSPACE
+            isChecked = (selectedEngine == OverlayService.ENGINE_UDP)
+        }
+
+        engineGroup.addView(rbUsb)
+        engineGroup.addView(rbTcp)
+        engineGroup.addView(rbUdp)
+
+        engineGroup.setOnCheckedChangeListener { group, checkedId ->
+            val checkedRb = group.findViewById<RadioButton>(checkedId)
+            if (checkedRb != null && checkedRb.isPressed) {
+                val newEngine = when (checkedId) {
+                    rbTcp.id -> OverlayService.ENGINE_TCP
+                    rbUdp.id -> OverlayService.ENGINE_UDP
+                    else -> OverlayService.ENGINE_USB
+                }
+                prefs.edit().putString(OverlayService.KEY_TRACKING_ENGINE, newEngine).apply()
+                Toast.makeText(this, "Engine switched to $newEngine!", Toast.LENGTH_SHORT).show()
+                restartOverlayServiceIfRunning()
+            }
+        }
+        devCard.addView(engineGroup)
+
+        val btnUsbPermission = Button(this).apply {
+            text = "🔑 GRANT USB PERMISSION FOR GLASSES (ENGINE 1)"
+            setBackgroundColor(Color.parseColor("#0C182B"))
+            setTextColor(Color.parseColor("#00E5FF"))
+            typeface = Typeface.MONOSPACE
+            textSize = 10f
+            setOnClickListener {
+                requestXrealUsbPermission()
+            }
+        }
+        devCard.addView(btnUsbPermission)
+
+        // Live Diagnostic Terminal Log Card
+        debugTextView = TextView(this).apply {
+            text = "> XREAL 1s Connection Terminal Ready.\n> Select tracking engine and start HUD."
+            textSize = 9f
+            setTextColor(Color.parseColor("#00FF66"))
+            typeface = Typeface.MONOSPACE
+            setPadding(12, 10, 12, 10)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#050B14"))
+                setStroke(1, Color.parseColor("#00FF66"))
+                cornerRadius = 2f
+            }
+        }
+        devCard.addView(debugTextView)
+        rootLayout.addView(devCard)
+
+        val spacer_mode = TextView(this).apply { text = " " }
+        rootLayout.addView(spacer_mode)
+
+        // --- Card 2: Quick Action Selection ---
+        val enableHeadCursor = prefs.getBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, true)
+        val singleTapAction = prefs.getString(OverlayService.KEY_SINGLE_TAP_ACTION, OverlayService.SINGLE_TAP_ACTION_CLICK) ?: OverlayService.SINGLE_TAP_ACTION_CLICK
+        val actionCard = createCompactCard("🔘 QUICK ACTION SELECTION", "#00E5FF")
 
         val cbHeadCursor = CheckBox(this).apply {
-            text = " Enable XREAL 1s Head Cursor"
+            text = " Enable Motion Head Cursor"
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             textSize = 12f
@@ -112,12 +197,11 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { buttonView, isChecked ->
                 if (buttonView.isPressed) {
                     prefs.edit().putBoolean(OverlayService.KEY_ENABLE_HEAD_CURSOR, isChecked).apply()
-                    Toast.makeText(this@MainActivity, "Head Cursor ${if (isChecked) "ON" else "OFF"}", Toast.LENGTH_SHORT).show()
                     restartOverlayServiceIfRunning()
                 }
             }
         }
-        connCard.addView(cbHeadCursor)
+        actionCard.addView(cbHeadCursor)
 
         val btnAccessibility = Button(this).apply {
             text = "👆 ENABLE ACCESSIBILITY FOR SYSTEM MOUSE CLICKS"
@@ -135,30 +219,7 @@ class MainActivity : Activity() {
                 }
             }
         }
-        connCard.addView(btnAccessibility)
-
-        // Live Diagnostic Terminal Log Card
-        debugTextView = TextView(this).apply {
-            text = "> XREAL 1s Connection Terminal Ready.\n> Plug in XREAL 1s and start HUD."
-            textSize = 9f
-            setTextColor(Color.parseColor("#00FF66"))
-            typeface = Typeface.MONOSPACE
-            setPadding(12, 10, 12, 10)
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#050B14"))
-                setStroke(1, Color.parseColor("#00FF66"))
-                cornerRadius = 2f
-            }
-        }
-        connCard.addView(debugTextView)
-        rootLayout.addView(connCard)
-
-        val spacer_mode = TextView(this).apply { text = " " }
-        rootLayout.addView(spacer_mode)
-
-        // --- Card 2: Quick Action Selection ---
-        val singleTapAction = prefs.getString(OverlayService.KEY_SINGLE_TAP_ACTION, OverlayService.SINGLE_TAP_ACTION_CLICK) ?: OverlayService.SINGLE_TAP_ACTION_CLICK
-        val actionCard = createCompactCard("🔘 QUICK ACTION SELECTION", "#00E5FF")
+        actionCard.addView(btnAccessibility)
 
         val tapGroup = RadioGroup(this).apply {
             orientation = RadioGroup.VERTICAL
@@ -446,6 +507,29 @@ class MainActivity : Activity() {
         }
         container.addView(cardTitle)
         return container
+    }
+
+    private fun requestXrealUsbPermission() {
+        val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+        val deviceList = usbManager.deviceList.values
+        val match = deviceList.find { device ->
+            device.vendorId == 0x3318 || device.productId in intArrayOf(0x0436, 0x0425, 0x0429)
+        }
+        if (match != null) {
+            val intent = Intent("com.xreal.hid.USB_PERMISSION").apply {
+                setPackage(packageName)
+            }
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                android.app.PendingIntent.FLAG_MUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            } else {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pi = android.app.PendingIntent.getBroadcast(this, 0, intent, flags)
+            usbManager.requestPermission(match, pi)
+            Toast.makeText(this, "USB permission requested!", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Plug in glasses first!", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun checkAndRequestOverlayPermission() {
