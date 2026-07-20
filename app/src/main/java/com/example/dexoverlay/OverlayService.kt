@@ -105,6 +105,7 @@ class OverlayService : Service() {
     private var cursorMeasuredWidth = 30
     private var cursorMeasuredHeight = 30
     private var lastImuTime = 0L
+    private var accumulatedScrollY = 0f
 
     // In-memory Preference Caching (avoid disk SharedPreferences reads per IMU frame)
     @Volatile private var cachedSensitivity = 0.45f
@@ -614,9 +615,7 @@ class OverlayService : Service() {
 
         // 100% Reliable Continuous Volume Down Head Scroll Drag
         if (isScrollModeActive) {
-            val prevY = cursorY
-            val scrollDeltaY = deltaY * 25f * sensitivity
-            cursorY = (cursorY + scrollDeltaY).coerceIn(0f, screenHeight)
+            accumulatedScrollY += deltaY * 35f * sensitivity
 
             val accService = HeadCursorAccessibilityService.instance
             if (accService != null) {
@@ -625,14 +624,23 @@ class OverlayService : Service() {
                 updateCursorViewPosition()
             }
 
-            val scrollIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_DRAG).apply {
-                setPackage(packageName)
-                putExtra(HeadCursorAccessibilityService.EXTRA_FROM_X, cursorX)
-                putExtra(HeadCursorAccessibilityService.EXTRA_FROM_Y, prevY)
-                putExtra(HeadCursorAccessibilityService.EXTRA_TO_X, cursorX)
-                putExtra(HeadCursorAccessibilityService.EXTRA_TO_Y, cursorY)
+            if (Math.abs(accumulatedScrollY) >= 12f) {
+                val scrollDelta = accumulatedScrollY
+                accumulatedScrollY = 0f
+
+                val acc = HeadCursorAccessibilityService.instance
+                if (acc != null) {
+                    acc.performDirectScroll(cursorX, cursorY, scrollDelta)
+                } else {
+                    val scrollIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_SCROLL).apply {
+                        setPackage(packageName)
+                        putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
+                        putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
+                        putExtra(HeadCursorAccessibilityService.EXTRA_SCROLL_DELTA_Y, scrollDelta)
+                    }
+                    sendBroadcast(scrollIntent)
+                }
             }
-            sendBroadcast(scrollIntent)
             return
         }
 

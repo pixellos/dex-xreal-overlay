@@ -128,6 +128,11 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         performSystemDrag(fromX, fromY, toX, toY)
     }
 
+    fun performDirectScroll(x: Float, y: Float, deltaY: Float) {
+        hasScrolledDuringVolDown = true
+        performSystemScroll(x, y, deltaY)
+    }
+
     private fun log(msg: String) {
         Log.d("HeadCursorService", msg)
         LogBuffer.add(msg)
@@ -325,30 +330,31 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
         val targetDisplay = DeXDisplayHelper.getTargetDisplay(this)
         val targetDisplayId = targetDisplay.displayId
+        val isScrollDown = deltaY > 0f
 
-        // Try direct accessibility Node Scroll first
-        if (tryNodeScroll(x, y, deltaY > 0)) {
-            log("ACCESSIBILITY: Executed direct Node Scroll at ($x, $y)")
+        // 1. Try direct accessibility Node Scroll first
+        if (tryNodeScroll(x, y, isScrollDown)) {
+            log("ACCESSIBILITY: Executed direct Node Scroll at ($x, $y) isScrollDown=$isScrollDown")
             return
         }
 
-        // Fallback: 500-pixel gesture swipe over 180ms for reliable touch fling scrolling
-        val strokeDist = if (deltaY > 0) 500f else -500f
-        val startY = y
-        val endY = (y - strokeDist).coerceIn(100f, 2000f)
+        // 2. Fallback: 450-pixel touch swipe gesture in 140ms for web views & desktop windows
+        val swipeDist = 450f
+        val startY = if (isScrollDown) (y + 200f).coerceAtMost(2000f) else (y - 200f).coerceAtLeast(100f)
+        val endY = if (isScrollDown) (startY - swipeDist).coerceAtLeast(100f) else (startY + swipeDist).coerceAtMost(2000f)
 
         val path = Path().apply {
             moveTo(x, startY)
             lineTo(x, endY)
         }
-        val stroke = GestureDescription.StrokeDescription(path, 0, 180L)
+        val stroke = GestureDescription.StrokeDescription(path, 0, 140L)
         val gesture = GestureDescription.Builder().apply {
             addStroke(stroke)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setDisplayId(targetDisplayId)
         }.build()
 
         val handled = dispatchGesture(gesture, null, null)
-        log("ACCESSIBILITY: Dispatched 180ms scroll gesture from $startY to $endY at x=$x → handled=$handled")
+        log("ACCESSIBILITY: Dispatched 140ms scroll gesture from $startY to $endY at x=$x → handled=$handled")
     }
 
     private fun tryNodeScroll(x: Float, y: Float, scrollDown: Boolean): Boolean {
