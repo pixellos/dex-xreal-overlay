@@ -75,7 +75,7 @@ class OverlayService : Service() {
         cursorModeLabel?.visibility = View.GONE
     }
 
-    // 60FPS smooth lerp movement loop
+    // 60FPS smooth lerp movement loop using GPU translation for max performance
     private val smoothLoopRunnable = object : Runnable {
         override fun run() {
             if (!isCursorLoopRunning) return
@@ -377,9 +377,10 @@ class OverlayService : Service() {
 
         cursorLayout = container
 
+        // Full-screen MATCH_PARENT layer for ultra-performant GPU translationX/Y cursor updates
         val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             } else {
@@ -392,27 +393,26 @@ class OverlayService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = (cursorX - cursorMeasuredWidth / 2f).toInt()
-            y = (cursorY - cursorMeasuredHeight / 2f).toInt()
+            x = 0
+            y = 0
         }
         cursorParams = params
 
         try {
             windowManager.addView(cursorLayout, cursorParams)
+            updateCursorViewPosition()
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
+    /** Ultra-fast GPU hardware-accelerated translation update (bypasses WindowManager re-layout IPC calls). */
     private fun updateCursorViewPosition() {
-        val params = cursorParams ?: return
-        val halfW = cursorMeasuredWidth / 2
-        val halfH = cursorMeasuredHeight / 2
-        params.x = (cursorX - halfW).toInt()
-        params.y = (cursorY - halfH).toInt()
-        try {
-            cursorLayout?.let { v -> windowManager.updateViewLayout(v, params) }
-        } catch (e: Exception) {}
+        val view = cursorLayout ?: return
+        val halfW = if (cursorMeasuredWidth > 0) cursorMeasuredWidth / 2f else 30f
+        val halfH = if (cursorMeasuredHeight > 0) cursorMeasuredHeight / 2f else 30f
+        view.translationX = cursorX - halfW
+        view.translationY = cursorY - halfH
     }
 
     private fun getCursorIconForCurrentMode(): String {
@@ -487,7 +487,6 @@ class OverlayService : Service() {
 
             when (actionName) {
                 ACTION_VAL_LEFT_CLICK -> {
-                    clickStabilizeUntilTime = System.currentTimeMillis() + 300L
                     val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
                         setPackage(packageName)
                         putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
@@ -498,7 +497,6 @@ class OverlayService : Service() {
                     sendBroadcast(clickIntent)
                 }
                 ACTION_VAL_RIGHT_CLICK -> {
-                    clickStabilizeUntilTime = System.currentTimeMillis() + 300L
                     val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
                         setPackage(packageName)
                         putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
@@ -534,14 +532,8 @@ class OverlayService : Service() {
         }
     }
 
-    private var clickStabilizeUntilTime = 0L
-
     private fun onHeadMove(deltaX: Float, deltaY: Float) {
         if (deltaX.isNaN() || deltaY.isNaN() || !deltaX.isFinite() || !deltaY.isFinite()) return
-
-        // 1. Anti-Jitter Rule: Freeze crosshair during/immediately after clicking (stabilizes button presses)
-        val now = System.currentTimeMillis()
-        if (now < clickStabilizeUntilTime) return
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val sensitivity = prefs.getFloat(KEY_HEAD_SENSITIVITY, 1.0f).coerceIn(0.2f, 3.0f)
@@ -563,17 +555,8 @@ class OverlayService : Service() {
             return // Lock cursor position during scroll
         }
 
-        // 2. Anti-Jitter Rule: High acceleration bump filter (damps physical button force spikes)
-        val sqMag = deltaX * deltaX + deltaY * deltaY
-        var effectiveDx = deltaX
-        var effectiveDy = deltaY
-        if (sqMag > 0.05f) { // Spike typical of physical button press force
-            effectiveDx *= 0.15f
-            effectiveDy *= 0.15f
-        }
-
-        rawCursorX = (rawCursorX + effectiveDx * 15f * sensitivity).coerceIn(0f, screenWidth)
-        rawCursorY = (rawCursorY + effectiveDy * 15f * sensitivity).coerceIn(0f, screenHeight)
+        rawCursorX = (rawCursorX + deltaX * 15f * sensitivity).coerceIn(0f, screenWidth)
+        rawCursorY = (rawCursorY + deltaY * 15f * sensitivity).coerceIn(0f, screenHeight)
 
         if (!isCursorLoopRunning) {
             isCursorLoopRunning = true
@@ -644,6 +627,7 @@ class OverlayService : Service() {
         // Properties for Vol Up / Vol Down / Mouse Mode mapping
         const val KEY_VOL_UP_ACTION = "vol_up_action"
         const val KEY_VOL_DOWN_ACTION = "vol_down_action"
+        const val KEY_VOL_DOWN_HOLD_ACTION = "vol_down_hold_action"
         const val KEY_MOUSE_MODE_ENABLED = "mouse_mode_enabled"
 
         // Configurable Head Sensitivity & Movement Smoothing
@@ -659,6 +643,7 @@ class OverlayService : Service() {
         const val ACTION_VAL_RIGHT_CLICK = "RIGHT_CLICK"
         const val ACTION_VAL_TOGGLE_HUD = "TOGGLE_HUD"
         const val ACTION_VAL_RECENTER = "RECENTER"
+        const val ACTION_VAL_SCROLL = "SCROLL"
         const val ACTION_VAL_NONE = "NONE"
 
         const val POS_TOP_RIGHT = "TOP_RIGHT"

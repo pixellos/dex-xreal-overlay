@@ -73,8 +73,7 @@ class MainActivity : Activity() {
             background = border(GREEN, 2)
             setPadding(16, 12, 16, 12)
         }
-        header.addView(label("CYBERDECK v556 // HUD OS", YELLOW, 14f, bold = true,
-            weight = 1f))
+        header.addView(label("CYBERDECK v556 // HUD OS", YELLOW, 14f, bold = true, weight = 1f))
         statusTag = label("[ PENDING ]", RED, 10f)
         header.addView(statusTag)
         root.addView(header)
@@ -97,7 +96,7 @@ class MainActivity : Activity() {
         root.addView(devCard)
         root.addView(gap())
 
-        // ── Card: Volume Buttons Mapper ───────────────────────────────────────
+        // ── Card: Volume Buttons Action Mapper ────────────────────────────────
         val mapperCard = card("🕹️ VOLUME BUTTONS ACTION MAPPER", YELLOW)
 
         cbMouseMode = CheckBox(this).apply {
@@ -118,7 +117,7 @@ class MainActivity : Activity() {
 
         val actions = listOf(
             OverlayService.ACTION_VAL_LEFT_CLICK  to "Execute Left Click",
-            OverlayService.ACTION_VAL_RIGHT_CLICK to "Execute Right Click (Long Press)",
+            OverlayService.ACTION_VAL_RIGHT_CLICK to "Execute Right Click",
             OverlayService.ACTION_VAL_TOGGLE_HUD  to "Toggle HUD On/Off",
             OverlayService.ACTION_VAL_RECENTER    to "Recenter Cursor",
             OverlayService.ACTION_VAL_NONE        to "None (disabled)"
@@ -140,55 +139,23 @@ class MainActivity : Activity() {
             restartOverlay()
         }
         mapperCard.addView(rgDown)
+        mapperCard.addView(gap())
+
+        // Volume Down Hold Action (Vertical Head Scroll / Mouse Mode Toggle)
+        val holdActions = listOf(
+            OverlayService.ACTION_VAL_SCROLL to "Vertical Head Scroll (Hold + Tilt Head)",
+            OverlayService.ACTION_VAL_TOGGLE_HUD to "Toggle Mouse Mode (5s hold)",
+            OverlayService.ACTION_VAL_NONE to "None (disabled)"
+        )
+        mapperCard.addView(label("Volume Down Hold Action:", YELLOW, 11f))
+        val rgHold = radioGroup(holdActions,
+            prefs.getString(OverlayService.KEY_VOL_DOWN_HOLD_ACTION, OverlayService.ACTION_VAL_SCROLL) ?: "") { chosen ->
+            prefs.edit().putString(OverlayService.KEY_VOL_DOWN_HOLD_ACTION, chosen).apply()
+            restartOverlay()
+        }
+        mapperCard.addView(rgHold)
+
         root.addView(mapperCard)
-        root.addView(gap())
-
-        // ── Card: Head Cursor Tuning (Sensitivity & Smoothing) ────────────────
-        val tuningCard = card("⚡ HEAD CURSOR TUNING (SENSITIVITY & SMOOTHING)", GREEN)
-
-        val currentSens = prefs.getFloat(OverlayService.KEY_HEAD_SENSITIVITY, 1.0f)
-        val sensLabel = label("Head Sensitivity: ${String.format("%.2f", currentSens)}x", YELLOW, 11f)
-        tuningCard.addView(sensLabel)
-
-        val sensSeekBar = SeekBar(this).apply {
-            max = 280 // 0.2x to 3.0x
-            progress = ((currentSens - 0.2f) * 100).toInt()
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
-                    val sens = 0.2f + p / 100f
-                    sensLabel.text = "Head Sensitivity: ${String.format("%.2f", sens)}x"
-                }
-                override fun onStartTrackingTouch(s: SeekBar?) {}
-                override fun onStopTrackingTouch(s: SeekBar?) {
-                    val sens = 0.2f + (s?.progress ?: 80) / 100f
-                    prefs.edit().putFloat(OverlayService.KEY_HEAD_SENSITIVITY, sens).apply()
-                }
-            })
-        }
-        tuningCard.addView(sensSeekBar)
-        tuningCard.addView(gap())
-
-        val currentSmooth = prefs.getFloat(OverlayService.KEY_SMOOTHING_FACTOR, 0.35f)
-        val smoothLabel = label("Movement Smoothing: ${String.format("%.2f", currentSmooth)} (⚡ Fast <-> Smooth 🧈)", YELLOW, 11f)
-        tuningCard.addView(smoothLabel)
-
-        val smoothSeekBar = SeekBar(this).apply {
-            max = 95 // 0.05 to 1.0
-            progress = ((currentSmooth - 0.05f) * 100).toInt()
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
-                    val smooth = 0.05f + p / 100f
-                    smoothLabel.text = "Movement Smoothing: ${String.format("%.2f", smooth)} (⚡ Fast <-> Smooth 🧈)"
-                }
-                override fun onStartTrackingTouch(s: SeekBar?) {}
-                override fun onStopTrackingTouch(s: SeekBar?) {
-                    val smooth = 0.05f + (s?.progress ?: 30) / 100f
-                    prefs.edit().putFloat(OverlayService.KEY_SMOOTHING_FACTOR, smooth).apply()
-                }
-            })
-        }
-        tuningCard.addView(smoothSeekBar)
-        root.addView(tuningCard)
         root.addView(gap())
 
         // ── Card: HUD Scale & Position ────────────────────────────────────────

@@ -206,6 +206,8 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             ?: OverlayService.ACTION_VAL_LEFT_CLICK
         val volDownAction = prefs.getString(OverlayService.KEY_VOL_DOWN_ACTION, OverlayService.ACTION_VAL_RIGHT_CLICK)
             ?: OverlayService.ACTION_VAL_RIGHT_CLICK
+        val volDownHoldAction = prefs.getString(OverlayService.KEY_VOL_DOWN_HOLD_ACTION, OverlayService.ACTION_VAL_SCROLL)
+            ?: OverlayService.ACTION_VAL_SCROLL
 
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             if (mouseModeEnabled) {
@@ -224,17 +226,23 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     isVolDownHeld = true
                     hasScrolledDuringVolDown = false
                     isVolDownLongPressedTriggered = false
-                    mainHandler.postDelayed(volDownLongPressRunnable, 5000)
-                    notifyScrollMode(true)
-                    log("KEY INTERCEPT: Vol Down DOWN → hold to scroll vertical by head pitch")
+
+                    if (volDownHoldAction == OverlayService.ACTION_VAL_SCROLL) {
+                        notifyScrollMode(true)
+                        log("KEY INTERCEPT: Vol Down DOWN → hold to scroll vertical by head pitch")
+                    } else if (volDownHoldAction == OverlayService.ACTION_VAL_TOGGLE_HUD) {
+                        mainHandler.postDelayed(volDownLongPressRunnable, 5000)
+                    }
                 }
                 if (mouseModeEnabled) return true
             } else if (action == KeyEvent.ACTION_UP) {
                 isVolDownHeld = false
                 mainHandler.removeCallbacks(volDownLongPressRunnable)
-                notifyScrollMode(false)
+                if (volDownHoldAction == OverlayService.ACTION_VAL_SCROLL) {
+                    notifyScrollMode(false)
+                }
 
-                // Only execute click on release IF the user didn't scroll or trigger 5s long press
+                // Execute click on release if the user didn't scroll or trigger 5s long press
                 if (mouseModeEnabled && !isVolDownLongPressedTriggered && !hasScrolledDuringVolDown) {
                     log("KEY INTERCEPT: Vol Down UP → action: $volDownAction")
                     triggerAction(volDownAction)
