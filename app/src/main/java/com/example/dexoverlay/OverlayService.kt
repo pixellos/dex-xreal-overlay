@@ -523,10 +523,8 @@ class OverlayService : Service() {
         const val KEY_X_OFFSET = "hud_x_offset"
         const val KEY_Y_OFFSET = "hud_y_offset"
         const val KEY_ENABLE_HEAD_CURSOR = "enable_head_cursor"
-        const val KEY_SINGLE_TAP_ACTION = "single_tap_action"
-        const val KEY_TRACKING_ENGINE = "tracking_engine"
 
-        // New properties for Vol Up / Vol Down / Mouse Mode mapping
+        // Properties for Vol Up / Vol Down / Mouse Mode mapping
         const val KEY_VOL_UP_ACTION = "vol_up_action"
         const val KEY_VOL_DOWN_ACTION = "vol_down_action"
         const val KEY_MOUSE_MODE_ENABLED = "mouse_mode_enabled"
@@ -540,15 +538,6 @@ class OverlayService : Service() {
         const val POS_TOP_RIGHT = "TOP_RIGHT"
         const val POS_TOP_LEFT = "TOP_LEFT"
 
-        const val SINGLE_TAP_ACTION_CLICK = "CLICK"
-        const val SINGLE_TAP_ACTION_TOGGLE_HUD = "TOGGLE_HUD"
-        const val SINGLE_TAP_ACTION_RECENTER = "RECENTER"
-
-        const val ENGINE_USB = "USB"
-        const val ENGINE_TCP = "TCP"
-        const val ENGINE_UDP = "UDP"
-
         const val ACTION_UPDATE_POSITION = "com.example.dexoverlay.UPDATE_POSITION"
-        const val ACTION_TRIGGER_TAP = "com.example.dexoverlay.TRIGGER_TAP"
     }
 }

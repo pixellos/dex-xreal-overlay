@@ -18,7 +18,6 @@ import android.view.accessibility.AccessibilityNodeInfo
 
 class HeadCursorAccessibilityService : AccessibilityService() {
 
-    private var volDownPressedTime = 0L
     private val mainHandler = Handler(Looper.getMainLooper())
     private var isVolDownLongPressedTriggered = false
 
@@ -152,10 +151,12 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
         log("KEY INTERCEPT: keyCode=$keyCode (${KeyEvent.keyCodeToString(keyCode)}), action=$actionStr")
 
-        val prefs = getSharedPreferences("dex_hud_prefs", Context.MODE_PRIVATE)
-        val mouseModeEnabled = prefs.getBoolean("mouse_mode_enabled", true)
-        val volUpAction = prefs.getString("vol_up_action", "LEFT_CLICK") ?: "LEFT_CLICK"
-        val volDownAction = prefs.getString("vol_down_action", "RIGHT_CLICK") ?: "RIGHT_CLICK"
+        val prefs = getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
+        val mouseModeEnabled = prefs.getBoolean(OverlayService.KEY_MOUSE_MODE_ENABLED, true)
+        val volUpAction = prefs.getString(OverlayService.KEY_VOL_UP_ACTION, OverlayService.ACTION_VAL_LEFT_CLICK)
+            ?: OverlayService.ACTION_VAL_LEFT_CLICK
+        val volDownAction = prefs.getString(OverlayService.KEY_VOL_DOWN_ACTION, OverlayService.ACTION_VAL_RIGHT_CLICK)
+            ?: OverlayService.ACTION_VAL_RIGHT_CLICK
 
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             if (mouseModeEnabled) {
@@ -172,7 +173,6 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             if (action == KeyEvent.ACTION_DOWN) {
                 if (event.repeatCount == 0) {
                     isVolDownLongPressedTriggered = false
-                    volDownPressedTime = System.currentTimeMillis()
                     mainHandler.postDelayed(volDownLongPressRunnable, 5000)
                     log("KEY INTERCEPT: Vol Down DOWN → starting 5s toggle timer...")
                 }
@@ -193,7 +193,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         if (keyCode in intArrayOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER)) {
             if (mouseModeEnabled && action == KeyEvent.ACTION_DOWN) {
                 log("KEY INTERCEPT: Bluetooth clicker $keyCode → LEFT_CLICK")
-                triggerAction("LEFT_CLICK")
+                triggerAction(OverlayService.ACTION_VAL_LEFT_CLICK)
                 return true
             }
         }
@@ -203,7 +203,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
     private fun triggerAction(actionName: String) {
         sendBroadcast(Intent(ACTION_TRIGGER_ACTION).apply {
-            setPackage(packageName)  // required for RECEIVER_NOT_EXPORTED on API 33+
+            setPackage(packageName)
             putExtra(EXTRA_ACTION_NAME, actionName)
         })
     }

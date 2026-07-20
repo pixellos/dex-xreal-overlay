@@ -146,7 +146,10 @@ class XrealOneImuManager(private val context: Context) {
                                                 log("USB BUTTON: Pressed virtButton=$virtButton, value=$value")
 
                                                 if (value == 1) { // Button Down
-                                                    val triggerIntent = Intent(OverlayService.ACTION_TRIGGER_TAP)
+                                                    val triggerIntent = Intent(HeadCursorAccessibilityService.ACTION_TRIGGER_ACTION).apply {
+                                                        setPackage(context.packageName)
+                                                        putExtra(HeadCursorAccessibilityService.EXTRA_ACTION_NAME, OverlayService.ACTION_VAL_LEFT_CLICK)
+                                                    }
                                                     context.sendBroadcast(triggerIntent)
                                                 }
                                             }
