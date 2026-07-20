@@ -38,6 +38,10 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     private var hasDraggedDuringVolUp = false
     private var volUpPressTime = 0L
 
+    // Volume Down triple click state
+    private var volDownTapCount = 0
+    private var lastVolDownTapTime = 0L
+
     private fun notifyScrollMode(isScrolling: Boolean) {
         val intent = Intent(ACTION_SCROLL_MODE_CHANGED).apply {
             setPackage(packageName)
@@ -304,6 +308,28 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                 mainHandler.removeCallbacks(volDownLongPressRunnable)
                 if (volDownHoldAction == OverlayService.ACTION_VAL_SCROLL) {
                     notifyScrollMode(false)
+                }
+
+                val now = System.currentTimeMillis()
+                if (now - lastVolDownTapTime < 350L) {
+                    volDownTapCount++
+                } else {
+                    volDownTapCount = 1
+                }
+                lastVolDownTapTime = now
+
+                val tripleAction = prefs.getString(OverlayService.KEY_VOL_DOWN_TRIPLE_ACTION, OverlayService.ACTION_VAL_HOME)
+                    ?: OverlayService.ACTION_VAL_HOME
+
+                if (volDownTapCount == 3) {
+                    volDownTapCount = 0
+                    if (tripleAction == OverlayService.ACTION_VAL_HOME) {
+                        log("KEY INTERCEPT: Vol Down 3x TRIPLE CLICK → Send GLOBAL_ACTION_HOME")
+                        performGlobalAction(GLOBAL_ACTION_HOME)
+                    }
+                    hasScrolledDuringVolDown = false
+                    isVolDownLongPressedTriggered = false
+                    return true
                 }
 
                 if (mouseModeEnabled && !isVolDownLongPressedTriggered && !hasScrolledDuringVolDown) {

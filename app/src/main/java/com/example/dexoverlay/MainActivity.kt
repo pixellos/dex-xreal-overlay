@@ -149,6 +149,19 @@ class MainActivity : Activity() {
             restartOverlay()
         }
         mapperCard.addView(rgHold)
+        mapperCard.addView(gap())
+
+        val tripleActions = listOf(
+            OverlayService.ACTION_VAL_HOME to "Send HOME Key (Desktop / Home Screen)",
+            OverlayService.ACTION_VAL_NONE to "None (disabled)"
+        )
+        mapperCard.addView(label("Volume Down Triple-Click Action:", YELLOW, 11f))
+        val rgTriple = radioGroup(tripleActions,
+            prefs.getString(OverlayService.KEY_VOL_DOWN_TRIPLE_ACTION, OverlayService.ACTION_VAL_HOME) ?: "") { chosen ->
+            prefs.edit().putString(OverlayService.KEY_VOL_DOWN_TRIPLE_ACTION, chosen).apply()
+            restartOverlay()
+        }
+        mapperCard.addView(rgTriple)
 
         root.addView(mapperCard)
         root.addView(gap())
