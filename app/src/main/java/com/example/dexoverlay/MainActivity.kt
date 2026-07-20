@@ -179,6 +179,26 @@ class MainActivity : Activity() {
         root.addView(mapperCard)
         root.addView(gap())
 
+        // ── Card: Head Movement Strategy ───────────────────────────
+        val strategyCard = card("🎮 HEAD MOVEMENT STRATEGY", GREEN)
+
+        val strategies = listOf(
+            OverlayService.STRATEGY_LINEAR     to "Linear (Direct 1:1)",
+            OverlayService.STRATEGY_LOG        to "Logarithmic (Micro-Precision & Fast Sweep)",
+            OverlayService.STRATEGY_NLOG       to "Negative Log (Exponential Power Curve)",
+            OverlayService.STRATEGY_FILTERED   to "Filtered (1€ Adaptive Low-Pass Jitter Filter)",
+            OverlayService.STRATEGY_DERIVATIVE to "Derivative (Velocity Acceleration Gain)"
+        )
+        val currentStrategy = prefs.getString(OverlayService.KEY_MOVEMENT_STRATEGY, OverlayService.STRATEGY_LINEAR)
+            ?: OverlayService.STRATEGY_LINEAR
+        val rgStrategy = radioGroup(strategies, currentStrategy) { chosen ->
+            prefs.edit().putString(OverlayService.KEY_MOVEMENT_STRATEGY, chosen).apply()
+            restartOverlay()
+        }
+        strategyCard.addView(rgStrategy)
+        root.addView(strategyCard)
+        root.addView(gap())
+
         // ── Card: Direct Head Sensitivity ────────────────────────────
         val tuningCard = card("⚡ HEAD CURSOR SENSITIVITY", GREEN)
 

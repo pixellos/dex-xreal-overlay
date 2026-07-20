@@ -28,6 +28,54 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * 1€ (One Euro) Filter for adaptive low-pass jitter suppression.
+ */
+class OneEuroFilter(
+    var minCutoff: Float = 0.8f,
+    var beta: Float = 0.007f,
+    var dCutoff: Float = 1.0f
+) {
+    private var xPrev: Float? = null
+    private var dxPrev: Float = 0.0f
+    private var tPrev: Long? = null
+
+    private fun alpha(cutoff: Float, dt: Float): Float {
+        val tau = 1.0f / (2.0f * Math.PI.toFloat() * cutoff)
+        return 1.0f / (1.0f + tau / dt)
+    }
+
+    fun filter(x: Float, timestampMs: Long): Float {
+        if (tPrev == null || xPrev == null) {
+            xPrev = x
+            tPrev = timestampMs
+            dxPrev = 0.0f
+            return x
+        }
+
+        val dt = ((timestampMs - tPrev!!) / 1000.0f).coerceIn(0.001f, 0.1f)
+        tPrev = timestampMs
+
+        val dx = (x - xPrev!!) / dt
+        val aD = alpha(dCutoff, dt)
+        val edx = aD * dx + (1.0f - aD) * dxPrev
+        dxPrev = edx
+
+        val cutoff = minCutoff + beta * Math.abs(edx)
+        val a = alpha(cutoff, dt)
+
+        val xHat = a * x + (1.0f - a) * xPrev!!
+        xPrev = xHat
+        return xHat
+    }
+
+    fun reset() {
+        xPrev = null
+        tPrev = null
+        dxPrev = 0.0f
+    }
+}
+
 class OverlayService : Service() {
 
     private lateinit var windowManager: WindowManager
@@ -48,17 +96,20 @@ class OverlayService : Service() {
     private var screenWidth = 1920f
     private var screenHeight = 1080f
 
-    // Direct Unfiltered Direct Cursor Movement
+    // Cursor Movement & Strategy Transforms
     private var rawCursorX = 960f
     private var rawCursorY = 540f
     private var cursorX = 960f
     private var cursorY = 540f
     private var cursorMeasuredWidth = 30
     private var cursorMeasuredHeight = 30
+    private var lastImuTime = 0L
+
+    private val filterX = OneEuroFilter(minCutoff = 0.8f, beta = 0.007f)
+    private val filterY = OneEuroFilter(minCutoff = 0.8f, beta = 0.007f)
 
     // Scroll mode (holding Volume Down + tilting head)
     private var isScrollModeActive = false
-    private var scrollAccumulatorY = 0f
 
     // Drag mode (holding Volume Up + tilting head)
     private var isDragModeActive = false
@@ -165,7 +216,6 @@ class OverlayService : Service() {
                 }
                 HeadCursorAccessibilityService.ACTION_SCROLL_MODE_CHANGED -> {
                     isScrollModeActive = intent.getBooleanExtra(HeadCursorAccessibilityService.EXTRA_IS_SCROLLING, false)
-                    if (!isScrollModeActive) scrollAccumulatorY = 0f
                 }
                 HeadCursorAccessibilityService.ACTION_DRAG_MODE_CHANGED -> {
                     isDragModeActive = intent.getBooleanExtra(HeadCursorAccessibilityService.EXTRA_IS_DRAGGING, false)
@@ -390,7 +440,6 @@ class OverlayService : Service() {
                 WindowManager.LayoutParams.TYPE_PHONE
             },
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -506,9 +555,41 @@ class OverlayService : Service() {
         val enableHeadCursor = prefs.getBoolean(KEY_ENABLE_HEAD_CURSOR, true)
         if (!enableHeadCursor) return
 
+        filterX.reset()
+        filterY.reset()
+        lastImuTime = 0L
+
         imuManager = XrealOneImuManager(this).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             start()
+        }
+    }
+
+    private fun transformDelta(delta: Float, dt: Float, strategy: String, sensitivity: Float): Float {
+        val absDelta = Math.abs(delta)
+        val sign = if (delta >= 0) 1f else -1f
+
+        return when (strategy) {
+            STRATEGY_LOG -> {
+                // Logarithmic compression for micro precision at slow speeds + fast acceleration at high speeds
+                val logVal = Math.log1p(absDelta * 10.0).toFloat()
+                sign * logVal * 15f * sensitivity
+            }
+            STRATEGY_NLOG -> {
+                // Negative log / power exponential: delta ^ 1.5
+                val powVal = Math.pow(absDelta.toDouble(), 1.5).toFloat()
+                sign * powVal * 25f * sensitivity
+            }
+            STRATEGY_DERIVATIVE -> {
+                // Velocity derivative gain: boost gain dynamically when moving fast
+                val velocity = absDelta / dt.coerceAtLeast(0.001f)
+                val gain = 1.0f + (velocity * 0.05f).coerceAtMost(3.0f)
+                sign * absDelta * gain * 15f * sensitivity
+            }
+            else -> {
+                // LINEAR & FILTERED base step
+                sign * absDelta * 15f * sensitivity
+            }
         }
     }
 
@@ -517,32 +598,52 @@ class OverlayService : Service() {
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val sensitivity = prefs.getFloat(KEY_HEAD_SENSITIVITY, 0.45f).coerceIn(0.1f, 5.0f)
+        val strategy = prefs.getString(KEY_MOVEMENT_STRATEGY, STRATEGY_LINEAR) ?: STRATEGY_LINEAR
 
+        // 100% Reliable Continuous Volume Down Head Scroll Drag
         if (isScrollModeActive) {
-            scrollAccumulatorY += deltaY * 120f * sensitivity
-            if (Math.abs(scrollAccumulatorY) >= 15f) {
-                val scrollDirY = if (scrollAccumulatorY > 0) 450f else -450f
-                scrollAccumulatorY = 0f
-                val scrollIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_SCROLL).apply {
-                    setPackage(packageName)
-                    putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
-                    putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
-                    putExtra(HeadCursorAccessibilityService.EXTRA_SCROLL_DELTA_Y, scrollDirY)
-                }
-                sendBroadcast(scrollIntent)
+            val prevY = cursorY
+            val scrollDeltaY = deltaY * 25f * sensitivity
+            cursorY = (cursorY + scrollDeltaY).coerceIn(0f, screenHeight)
+
+            val accService = HeadCursorAccessibilityService.instance
+            if (accService != null) {
+                accService.updateCursorPosition(cursorX, cursorY)
+            } else {
+                updateCursorViewPosition()
             }
+
+            val scrollIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_DRAG).apply {
+                setPackage(packageName)
+                putExtra(HeadCursorAccessibilityService.EXTRA_FROM_X, cursorX)
+                putExtra(HeadCursorAccessibilityService.EXTRA_FROM_Y, prevY)
+                putExtra(HeadCursorAccessibilityService.EXTRA_TO_X, cursorX)
+                putExtra(HeadCursorAccessibilityService.EXTRA_TO_Y, cursorY)
+            }
+            sendBroadcast(scrollIntent)
             return
         }
 
         val prevX = cursorX
         val prevY = cursorY
 
-        // Direct raw IMU motion (No filtering)
-        rawCursorX = (rawCursorX + deltaX * 15f * sensitivity).coerceIn(0f, screenWidth)
-        rawCursorY = (rawCursorY + deltaY * 15f * sensitivity).coerceIn(0f, screenHeight)
+        val now = System.currentTimeMillis()
+        val dt = if (lastImuTime != 0L) ((now - lastImuTime) / 1000f).coerceIn(0.001f, 0.1f) else 0.016f
+        lastImuTime = now
 
-        cursorX = rawCursorX
-        cursorY = rawCursorY
+        val stepX = transformDelta(deltaX, dt, strategy, sensitivity)
+        val stepY = transformDelta(deltaY, dt, strategy, sensitivity)
+
+        rawCursorX = (rawCursorX + stepX).coerceIn(0f, screenWidth)
+        rawCursorY = (rawCursorY + stepY).coerceIn(0f, screenHeight)
+
+        if (strategy == STRATEGY_FILTERED) {
+            cursorX = filterX.filter(rawCursorX, now)
+            cursorY = filterY.filter(rawCursorY, now)
+        } else {
+            cursorX = rawCursorX
+            cursorY = rawCursorY
+        }
 
         // Update top-most TYPE_ACCESSIBILITY_OVERLAY crosshair via AccessibilityService (0ms in-process)
         val accService = HeadCursorAccessibilityService.instance
@@ -630,6 +731,13 @@ class OverlayService : Service() {
         const val KEY_MOUSE_MODE_ENABLED = "mouse_mode_enabled"
 
         const val KEY_HEAD_SENSITIVITY = "head_sensitivity"
+
+        const val KEY_MOVEMENT_STRATEGY = "movement_strategy"
+        const val STRATEGY_LINEAR     = "LINEAR"
+        const val STRATEGY_LOG        = "LOG"
+        const val STRATEGY_NLOG       = "NLOG"
+        const val STRATEGY_FILTERED   = "FILTERED"
+        const val STRATEGY_DERIVATIVE = "DERIVATIVE"
 
         const val KEY_CLICK_ENGINE   = "click_engine"
         const val CLICK_ENGINE_TOUCH = "TOUCH_GESTURE"
