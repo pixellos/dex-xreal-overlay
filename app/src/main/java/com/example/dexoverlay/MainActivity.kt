@@ -72,72 +72,9 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
-        // --- Card 1: XREAL 1s Tracking Selector & Diagnostics ---
-        val selectedEngine = prefs.getString(OverlayService.KEY_TRACKING_ENGINE, OverlayService.ENGINE_USB) ?: OverlayService.ENGINE_USB
-        val devCard = createCompactCard("👓 XREAL 1s TRACKING ENGINE SELECTOR", "#00E5FF")
+        // --- Card 1: XREAL 1s System Diagnostics & Control ---
+        val devCard = createCompactCard("👓 XREAL 1s DIAGNOSTICS & CONTROLS", "#00E5FF")
 
-        val engineGroup = RadioGroup(this).apply {
-            orientation = RadioGroup.VERTICAL
-            setPadding(0, 8, 0, 8)
-        }
-
-        val rbUsb = RadioButton(this).apply {
-            id = View.generateViewId()
-            text = "Engine 1: XREAL USB HID Mode (Direct USB Cable)"
-            setTextColor(Color.WHITE)
-            textSize = 11f
-            typeface = Typeface.MONOSPACE
-            isChecked = (selectedEngine == OverlayService.ENGINE_USB)
-        }
-        val rbTcp = RadioButton(this).apply {
-            id = View.generateViewId()
-            text = "Engine 2: XREAL TCP Network Client (169.254.2.1:52998)"
-            setTextColor(Color.WHITE)
-            textSize = 11f
-            typeface = Typeface.MONOSPACE
-            isChecked = (selectedEngine == OverlayService.ENGINE_TCP)
-        }
-        val rbUdp = RadioButton(this).apply {
-            id = View.generateViewId()
-            text = "Engine 3: External UDP Socket Listener (Port 9090)"
-            setTextColor(Color.WHITE)
-            textSize = 11f
-            typeface = Typeface.MONOSPACE
-            isChecked = (selectedEngine == OverlayService.ENGINE_UDP)
-        }
-
-        engineGroup.addView(rbUsb)
-        engineGroup.addView(rbTcp)
-        engineGroup.addView(rbUdp)
-
-        engineGroup.setOnCheckedChangeListener { group, checkedId ->
-            val checkedRb = group.findViewById<RadioButton>(checkedId)
-            if (checkedRb != null && checkedRb.isPressed) {
-                val newEngine = when (checkedId) {
-                    rbTcp.id -> OverlayService.ENGINE_TCP
-                    rbUdp.id -> OverlayService.ENGINE_UDP
-                    else -> OverlayService.ENGINE_USB
-                }
-                prefs.edit().putString(OverlayService.KEY_TRACKING_ENGINE, newEngine).apply()
-                Toast.makeText(this, "Engine switched to $newEngine!", Toast.LENGTH_SHORT).show()
-                restartOverlayServiceIfRunning()
-            }
-        }
-        devCard.addView(engineGroup)
-
-        val btnUsbPermission = Button(this).apply {
-            text = "🔑 GRANT USB PERMISSION FOR GLASSES (ENGINE 1)"
-            setBackgroundColor(Color.parseColor("#0C182B"))
-            setTextColor(Color.parseColor("#00E5FF"))
-            typeface = Typeface.MONOSPACE
-            textSize = 10f
-            setOnClickListener {
-                requestXrealUsbPermission()
-            }
-        }
-        devCard.addView(btnUsbPermission)
-
-        // Large Diagnostics Access Button
         val btnDiagnostics = Button(this).apply {
             text = "🔎 OPEN FULL DIAGNOSTICS & SYSTEM LOGS"
             setBackgroundColor(Color.parseColor("#0C182B"))
@@ -151,6 +88,18 @@ class MainActivity : Activity() {
             }
         }
         devCard.addView(btnDiagnostics)
+
+        val btnUsbPermission = Button(this).apply {
+            text = "🔑 GRANT USB PERMISSION FOR GLASSES (ENGINE 1)"
+            setBackgroundColor(Color.parseColor("#0C182B"))
+            setTextColor(Color.parseColor("#00E5FF"))
+            typeface = Typeface.MONOSPACE
+            textSize = 10f
+            setOnClickListener {
+                requestXrealUsbPermission()
+            }
+        }
+        devCard.addView(btnUsbPermission)
         rootLayout.addView(devCard)
 
         val spacer_mode = TextView(this).apply { text = " " }

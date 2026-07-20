@@ -195,6 +195,13 @@ class XrealOneImuManager(private val context: Context) {
 
     // Dynamic Host and Routing Discovery (Zero Hardcoding)
     private fun discoverTargetHost(): String {
+        val prefs = context.getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
+        val customIp = prefs.getString("custom_target_host_ip", "") ?: ""
+        if (customIp.trim().isNotEmpty()) {
+            log("Using custom target IP override: $customIp")
+            return customIp.trim()
+        }
+
         var targetIp = "169.254.2.1" // Default fallback
 
         // 1. Scan ARP Cache (/proc/net/arp)
