@@ -55,6 +55,10 @@ class OverlayService : Service() {
     private var cursorMeasuredHeight = 60
     private var isCursorLoopRunning = false
 
+    // Scroll mode (holding Volume Down + tilting head)
+    private var isScrollModeActive = false
+    private var scrollAccumulatorY = 0f
+
     private var imuManager: XrealOneImuManager? = null
     private var isNavActive = false
     private var isHudVisible = true
@@ -179,6 +183,11 @@ class OverlayService : Service() {
                 HeadCursorAccessibilityService.ACTION_TOGGLE_MOUSE_MODE -> {
                     toggleMouseMode()
                 }
+                HeadCursorAccessibilityService.ACTION_SCROLL_MODE_CHANGED -> {
+                    isScrollModeActive = intent.getBooleanExtra(HeadCursorAccessibilityService.EXTRA_IS_SCROLLING, false)
+                    if (!isScrollModeActive) scrollAccumulatorY = 0f
+                    LogBuffer.add("OVERLAY: Scroll mode changed → active=$isScrollModeActive")
+                }
             }
         }
     }
@@ -200,12 +209,16 @@ class OverlayService : Service() {
         register(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE))
         register(positionReceiver, IntentFilter(ACTION_UPDATE_POSITION))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(actionReceiver, IntentFilter(HeadCursorAccessibilityService.ACTION_TRIGGER_ACTION).apply {
+            registerReceiver(actionReceiver, IntentFilter().apply {
+                addAction(HeadCursorAccessibilityService.ACTION_TRIGGER_ACTION)
                 addAction(HeadCursorAccessibilityService.ACTION_TOGGLE_MOUSE_MODE)
+                addAction(HeadCursorAccessibilityService.ACTION_SCROLL_MODE_CHANGED)
             }, RECEIVER_EXPORTED)
         } else {
-            registerReceiver(actionReceiver, IntentFilter(HeadCursorAccessibilityService.ACTION_TRIGGER_ACTION).apply {
+            registerReceiver(actionReceiver, IntentFilter().apply {
+                addAction(HeadCursorAccessibilityService.ACTION_TRIGGER_ACTION)
                 addAction(HeadCursorAccessibilityService.ACTION_TOGGLE_MOUSE_MODE)
+                addAction(HeadCursorAccessibilityService.ACTION_SCROLL_MODE_CHANGED)
             })
         }
 
@@ -352,7 +365,6 @@ class OverlayService : Service() {
         }
         container.addView(cursorModeLabel)
 
-        // Track layout dimensions so (cursorX, cursorY) is aligned to the visual CENTER of the crosshair
         container.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
             val w = right - left
             val h = bottom - top
@@ -526,6 +538,23 @@ class OverlayService : Service() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val sensitivity = prefs.getFloat(KEY_HEAD_SENSITIVITY, 1.0f).coerceIn(0.2f, 3.0f)
 
+        if (isScrollModeActive) {
+            // While holding Volume Down, pitch head up/down to scroll vertically!
+            scrollAccumulatorY += deltaY * 120f * sensitivity
+            if (Math.abs(scrollAccumulatorY) >= 20f) {
+                val amountY = scrollAccumulatorY
+                scrollAccumulatorY = 0f
+                val scrollIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_SCROLL).apply {
+                    setPackage(packageName)
+                    putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
+                    putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
+                    putExtra(HeadCursorAccessibilityService.EXTRA_SCROLL_DELTA_Y, amountY)
+                }
+                sendBroadcast(scrollIntent)
+            }
+            return // Lock cursor position during scroll
+        }
+
         rawCursorX = (rawCursorX + deltaX * 15f * sensitivity).coerceIn(0f, screenWidth)
         rawCursorY = (rawCursorY + deltaY * 15f * sensitivity).coerceIn(0f, screenHeight)
 
@@ -603,6 +632,11 @@ class OverlayService : Service() {
         // Configurable Head Sensitivity & Movement Smoothing
         const val KEY_HEAD_SENSITIVITY = "head_sensitivity" // 0.2x to 3.0x
         const val KEY_SMOOTHING_FACTOR  = "head_smoothing"   // 0.05 to 1.0
+
+        // Click Simulation Engine Options
+        const val KEY_CLICK_ENGINE   = "click_engine"
+        const val CLICK_ENGINE_TOUCH = "TOUCH_GESTURE" // Simulated Real Touch (50ms single tap)
+        const val CLICK_ENGINE_NODE  = "NODE_CLICK"    // Accessibility Tree Node Click
 
         const val ACTION_VAL_LEFT_CLICK = "LEFT_CLICK"
         const val ACTION_VAL_RIGHT_CLICK = "RIGHT_CLICK"

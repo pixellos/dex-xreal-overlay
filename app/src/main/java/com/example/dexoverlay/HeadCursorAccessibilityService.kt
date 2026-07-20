@@ -20,6 +20,9 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var isVolDownLongPressedTriggered = false
+    private var isVolDownHeld = false
+    private var hasScrolledDuringVolDown = false
+    private var lastClickTimestamp = 0L
 
     private val volDownLongPressRunnable = Runnable {
         isVolDownLongPressedTriggered = true
@@ -29,12 +32,22 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
     private val clickReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == ACTION_PERFORM_CLICK) {
-                val x = intent.getFloatExtra(EXTRA_X, 960f)
-                val y = intent.getFloatExtra(EXTRA_Y, 540f)
-                val isRight = intent.getBooleanExtra(EXTRA_IS_RIGHT, false)
-                log("RECEIVER_CLICK: Executing mapped click at coordinate ($x, $y) isRight=$isRight")
-                performSystemClick(x, y, isRight)
+            when (intent?.action) {
+                ACTION_PERFORM_CLICK -> {
+                    val x = intent.getFloatExtra(EXTRA_X, 960f)
+                    val y = intent.getFloatExtra(EXTRA_Y, 540f)
+                    val isRight = intent.getBooleanExtra(EXTRA_IS_RIGHT, false)
+                    log("RECEIVER_CLICK: Executing mapped click at coordinate ($x, $y) isRight=$isRight")
+                    performSystemClick(x, y, isRight)
+                }
+                ACTION_PERFORM_SCROLL -> {
+                    val x = intent.getFloatExtra(EXTRA_X, 960f)
+                    val y = intent.getFloatExtra(EXTRA_Y, 540f)
+                    val deltaY = intent.getFloatExtra(EXTRA_SCROLL_DELTA_Y, 0f)
+                    hasScrolledDuringVolDown = true
+                    log("RECEIVER_SCROLL: Vertical scroll at ($x, $y), deltaY=$deltaY")
+                    performSystemScroll(x, y, deltaY)
+                }
             }
         }
     }
@@ -49,7 +62,10 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
     override fun onCreate() {
         super.onCreate()
-        val filter = IntentFilter(ACTION_PERFORM_CLICK)
+        val filter = IntentFilter().apply {
+            addAction(ACTION_PERFORM_CLICK)
+            addAction(ACTION_PERFORM_SCROLL)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(clickReceiver, filter, RECEIVER_EXPORTED)
         } else {
@@ -65,42 +81,77 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         log("HeadCursorAccessibilityService destroyed.")
     }
 
-    // ── Click strategies ──────────────────────────────────────────────────────
+    // ── Click & Scroll strategies ─────────────────────────────────────────────
 
     private fun performSystemClick(x: Float, y: Float, isRightClick: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
 
-        // Strategy 1: Accessibility node tree click — works across all displays
-        // including Samsung DeX virtual display (dispatchGesture setDisplayId does not).
-        if (!isRightClick && tryNodeClick(x, y)) return
+        // 200ms Click Debouncer: prevents rapid button bounces from creating accidental double-clicks
+        val now = System.currentTimeMillis()
+        if (now - lastClickTimestamp < 200L) {
+            log("CLICK DEBOUNCE: Suppressed rapid click within 200ms (prevents double-click semantic)")
+            return
+        }
+        lastClickTimestamp = now
 
-        // Strategy 2: dispatchGesture fallback (right-click long-press, or no node found)
+        val prefs = getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
+        val clickEngine = prefs.getString(OverlayService.KEY_CLICK_ENGINE, OverlayService.CLICK_ENGINE_TOUCH)
+            ?: OverlayService.CLICK_ENGINE_TOUCH
+
+        if (!isRightClick && clickEngine == OverlayService.CLICK_ENGINE_NODE && tryNodeClick(x, y)) {
+            return
+        }
+
+        // Real Touch Gesture Simulation
         val targetDisplay = DeXDisplayHelper.getTargetDisplay(this)
         val targetDisplayId = targetDisplay.displayId
 
         val path = Path().apply { moveTo(x, y) }
-        val duration = if (isRightClick) 1000L else 1L // Instant 1ms tap for zero lag
+        val duration = if (isRightClick) 1000L else 50L
         val stroke = GestureDescription.StrokeDescription(path, 0, duration)
         val gesture = GestureDescription.Builder().apply {
             addStroke(stroke)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setDisplayId(targetDisplayId)
         }.build()
 
-        val typeStr = if (isRightClick) "RIGHT CLICK (gesture)" else "LEFT CLICK (gesture fallback)"
+        val typeStr = if (isRightClick) "RIGHT CLICK (touch gesture)" else "LEFT CLICK (simulated touch gesture)"
         log("ACCESSIBILITY GESTURE: $typeStr at ($x, $y) on DisplayId $targetDisplayId")
 
         dispatchGesture(gesture, object : GestureResultCallback() {
             override fun onCompleted(g: GestureDescription?) {
-                log("ACCESSIBILITY GESTURE: ✓ completed at ($x, $y) DisplayId $targetDisplayId")
+                log("ACCESSIBILITY GESTURE: ✓ Touch completed at ($x, $y) DisplayId $targetDisplayId")
             }
             override fun onCancelled(g: GestureDescription?) {
-                log("ACCESSIBILITY GESTURE: ✗ CANCELLED/BLOCKED at ($x, $y) DisplayId $targetDisplayId")
+                log("ACCESSIBILITY GESTURE: ✗ Touch CANCELLED/BLOCKED at ($x, $y) DisplayId $targetDisplayId")
             }
         }, null)
     }
 
-    /** Walk the accessibility window tree to find a clickable node at (x, y).
-     *  This is display-agnostic and works on DeX virtual displays. */
+    /** Dispatches a vertical drag gesture at (x, y) to scroll content up/down. */
+    private fun performSystemScroll(x: Float, y: Float, deltaY: Float) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+
+        val targetDisplay = DeXDisplayHelper.getTargetDisplay(this)
+        val targetDisplayId = targetDisplay.displayId
+
+        val startY = y
+        val endY = (y - deltaY).coerceIn(50f, 2500f)
+
+        val path = Path().apply {
+            moveTo(x, startY)
+            lineTo(x, endY)
+        }
+
+        val stroke = GestureDescription.StrokeDescription(path, 0, 120L)
+        val gesture = GestureDescription.Builder().apply {
+            addStroke(stroke)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setDisplayId(targetDisplayId)
+        }.build()
+
+        dispatchGesture(gesture, null, null)
+    }
+
+    /** Walk the accessibility window tree to find a clickable node at (x, y). */
     private fun tryNodeClick(x: Float, y: Float): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return false
         return try {
@@ -126,13 +177,11 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** Depth-first search for deepest clickable node that contains (x, y). */
     private fun findClickableNodeAt(node: AccessibilityNodeInfo, x: Int, y: Int): AccessibilityNodeInfo? {
         val bounds = Rect()
         node.getBoundsInScreen(bounds)
         if (!bounds.contains(x, y)) return null
 
-        // Prefer deepest child match
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             val result = findClickableNodeAt(child, x, y)
@@ -172,17 +221,27 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             if (action == KeyEvent.ACTION_DOWN) {
                 if (event.repeatCount == 0) {
+                    isVolDownHeld = true
+                    hasScrolledDuringVolDown = false
                     isVolDownLongPressedTriggered = false
                     mainHandler.postDelayed(volDownLongPressRunnable, 5000)
-                    if (mouseModeEnabled) {
-                        log("KEY INTERCEPT: Vol Down DOWN → action: $volDownAction (instant)")
-                        triggerAction(volDownAction)
-                    }
+                    notifyScrollMode(true)
+                    log("KEY INTERCEPT: Vol Down DOWN → hold to scroll vertical by head pitch")
                 }
                 if (mouseModeEnabled) return true
             } else if (action == KeyEvent.ACTION_UP) {
+                isVolDownHeld = false
                 mainHandler.removeCallbacks(volDownLongPressRunnable)
-                val consumed = mouseModeEnabled || isVolDownLongPressedTriggered
+                notifyScrollMode(false)
+
+                // Only execute click on release IF the user didn't scroll or trigger 5s long press
+                if (mouseModeEnabled && !isVolDownLongPressedTriggered && !hasScrolledDuringVolDown) {
+                    log("KEY INTERCEPT: Vol Down UP → action: $volDownAction")
+                    triggerAction(volDownAction)
+                }
+
+                val consumed = mouseModeEnabled || isVolDownLongPressedTriggered || hasScrolledDuringVolDown
+                hasScrolledDuringVolDown = false
                 isVolDownLongPressedTriggered = false
                 if (consumed) return true
             }
@@ -200,6 +259,13 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         return super.onKeyEvent(event)
     }
 
+    private fun notifyScrollMode(active: Boolean) {
+        sendBroadcast(Intent(ACTION_SCROLL_MODE_CHANGED).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_IS_SCROLLING, active)
+        })
+    }
+
     private fun triggerAction(actionName: String) {
         sendBroadcast(Intent(ACTION_TRIGGER_ACTION).apply {
             setPackage(packageName)
@@ -211,12 +277,17 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     companion object {
-        const val ACTION_PERFORM_CLICK   = "com.example.dexoverlay.PERFORM_CLICK"
-        const val ACTION_TOGGLE_MOUSE_MODE = "com.example.dexoverlay.TOGGLE_MOUSE_MODE"
-        const val ACTION_TRIGGER_ACTION  = "com.example.dexoverlay.TRIGGER_ACTION"
-        const val EXTRA_ACTION_NAME = "action_name"
-        const val EXTRA_X = "click_x"
-        const val EXTRA_Y = "click_y"
-        const val EXTRA_IS_RIGHT = "is_right"
+        const val ACTION_PERFORM_CLICK      = "com.example.dexoverlay.PERFORM_CLICK"
+        const val ACTION_PERFORM_SCROLL     = "com.example.dexoverlay.PERFORM_SCROLL"
+        const val ACTION_TOGGLE_MOUSE_MODE  = "com.example.dexoverlay.TOGGLE_MOUSE_MODE"
+        const val ACTION_TRIGGER_ACTION     = "com.example.dexoverlay.TRIGGER_ACTION"
+        const val ACTION_SCROLL_MODE_CHANGED = "com.example.dexoverlay.SCROLL_MODE_CHANGED"
+
+        const val EXTRA_ACTION_NAME     = "action_name"
+        const val EXTRA_X               = "click_x"
+        const val EXTRA_Y               = "click_y"
+        const val EXTRA_IS_RIGHT        = "is_right"
+        const val EXTRA_SCROLL_DELTA_Y  = "scroll_delta_y"
+        const val EXTRA_IS_SCROLLING    = "is_scrolling"
     }
 }
