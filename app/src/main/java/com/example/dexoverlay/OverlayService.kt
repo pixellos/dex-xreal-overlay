@@ -106,8 +106,8 @@ class OverlayService : Service() {
     private var rawCursorY = 540f
     private var cursorX = 960f
     private var cursorY = 540f
-    private var cursorMeasuredWidth = 60
-    private var cursorMeasuredHeight = 60
+    private var cursorMeasuredWidth = 30
+    private var cursorMeasuredHeight = 30
 
     private val filterX = OneEuroFilter(minCutoff = 1.2f, beta = 0.007f)
     private val filterY = OneEuroFilter(minCutoff = 1.2f, beta = 0.007f)
@@ -115,6 +115,9 @@ class OverlayService : Service() {
     // Scroll mode (holding Volume Down + tilting head)
     private var isScrollModeActive = false
     private var scrollAccumulatorY = 0f
+
+    // Drag mode (holding Volume Up + tilting head)
+    private var isDragModeActive = false
 
     private var imuManager: XrealOneImuManager? = null
     private var isNavActive = false
@@ -219,7 +222,10 @@ class OverlayService : Service() {
                 HeadCursorAccessibilityService.ACTION_SCROLL_MODE_CHANGED -> {
                     isScrollModeActive = intent.getBooleanExtra(HeadCursorAccessibilityService.EXTRA_IS_SCROLLING, false)
                     if (!isScrollModeActive) scrollAccumulatorY = 0f
-                    LogBuffer.add("OVERLAY: Scroll mode changed → active=$isScrollModeActive")
+                }
+                HeadCursorAccessibilityService.ACTION_DRAG_MODE_CHANGED -> {
+                    isDragModeActive = intent.getBooleanExtra(HeadCursorAccessibilityService.EXTRA_IS_DRAGGING, false)
+                    LogBuffer.add("OVERLAY: Drag mode changed → active=$isDragModeActive")
                 }
             }
         }
@@ -246,12 +252,14 @@ class OverlayService : Service() {
                 addAction(HeadCursorAccessibilityService.ACTION_TRIGGER_ACTION)
                 addAction(HeadCursorAccessibilityService.ACTION_TOGGLE_MOUSE_MODE)
                 addAction(HeadCursorAccessibilityService.ACTION_SCROLL_MODE_CHANGED)
+                addAction(HeadCursorAccessibilityService.ACTION_DRAG_MODE_CHANGED)
             }, RECEIVER_EXPORTED)
         } else {
             registerReceiver(actionReceiver, IntentFilter().apply {
                 addAction(HeadCursorAccessibilityService.ACTION_TRIGGER_ACTION)
                 addAction(HeadCursorAccessibilityService.ACTION_TOGGLE_MOUSE_MODE)
                 addAction(HeadCursorAccessibilityService.ACTION_SCROLL_MODE_CHANGED)
+                addAction(HeadCursorAccessibilityService.ACTION_DRAG_MODE_CHANGED)
             })
         }
 
@@ -382,11 +390,12 @@ class OverlayService : Service() {
             setBackgroundColor(Color.TRANSPARENT)
         }
 
+        // Empty Outline Crosshair Icon (1/2 size = 14f)
         cursorIconView = TextView(this).apply {
-            text = getCursorIconForCurrentMode()
-            textSize = 28f
+            text = "⌖"
+            textSize = 14f
             setTextColor(getCursorColorForCurrentMode())
-            setShadowLayer(10f, 0f, 0f, getCursorColorForCurrentMode())
+            setShadowLayer(4f, 0f, 0f, getCursorColorForCurrentMode())
             gravity = Gravity.CENTER
         }
         container.addView(cursorIconView)
@@ -454,8 +463,8 @@ class OverlayService : Service() {
     /** Ultra-fast GPU hardware-accelerated translation update across 100% full screen area. */
     private fun updateCursorViewPosition() {
         val view = cursorLayout ?: return
-        val halfW = if (cursorMeasuredWidth > 0) cursorMeasuredWidth / 2f else 30f
-        val halfH = if (cursorMeasuredHeight > 0) cursorMeasuredHeight / 2f else 30f
+        val halfW = if (cursorMeasuredWidth > 0) cursorMeasuredWidth / 2f else 15f
+        val halfH = if (cursorMeasuredHeight > 0) cursorMeasuredHeight / 2f else 15f
         view.translationX = cursorX - halfW
         view.translationY = cursorY - halfH
     }
@@ -464,7 +473,7 @@ class OverlayService : Service() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val mouseModeEnabled = prefs.getBoolean(KEY_MOUSE_MODE_ENABLED, true)
         if (!mouseModeEnabled) return "❌"
-        return "✛"
+        return "⌖"
     }
 
     private fun getCursorColorForCurrentMode(): Int {
@@ -479,7 +488,7 @@ class OverlayService : Service() {
             cursorIconView?.text = getCursorIconForCurrentMode()
             val color = getCursorColorForCurrentMode()
             cursorIconView?.setTextColor(color)
-            cursorIconView?.setShadowLayer(10f, 0f, 0f, color)
+            cursorIconView?.setShadowLayer(4f, 0f, 0f, color)
         }
     }
 
@@ -504,7 +513,7 @@ class OverlayService : Service() {
                 cursorModeLabel?.setTextColor(Color.parseColor("#FF0055"))
                 cursorIconView?.text = "❌"
                 cursorIconView?.setTextColor(Color.parseColor("#FF0055"))
-                cursorIconView?.setShadowLayer(10f, 0f, 0f, Color.parseColor("#FF0055"))
+                cursorIconView?.setShadowLayer(4f, 0f, 0f, Color.parseColor("#FF0055"))
                 handler.postDelayed({
                     cursorRootFrame?.visibility = View.GONE
                 }, 2000)
@@ -527,7 +536,6 @@ class OverlayService : Service() {
                         putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
                         putExtra(HeadCursorAccessibilityService.EXTRA_IS_RIGHT, false)
                     }
-                    LogBuffer.add("OVERLAY: Dispatching LEFT_CLICK broadcast at ($cursorX, $cursorY)")
                     sendBroadcast(clickIntent)
                 }
                 ACTION_VAL_RIGHT_CLICK -> {
@@ -537,7 +545,6 @@ class OverlayService : Service() {
                         putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
                         putExtra(HeadCursorAccessibilityService.EXTRA_IS_RIGHT, true)
                     }
-                    LogBuffer.add("OVERLAY: Dispatching RIGHT_CLICK broadcast at ($cursorX, $cursorY)")
                     sendBroadcast(clickIntent)
                 }
             }
@@ -565,7 +572,6 @@ class OverlayService : Service() {
         val sensitivity = prefs.getFloat(KEY_HEAD_SENSITIVITY, 0.45f).coerceIn(0.1f, 5.0f)
 
         if (isScrollModeActive) {
-            // While holding Volume Down, pitch head up/down to scroll vertically!
             scrollAccumulatorY += deltaY * 120f * sensitivity
             if (Math.abs(scrollAccumulatorY) >= 20f) {
                 val amountY = scrollAccumulatorY
@@ -578,18 +584,31 @@ class OverlayService : Service() {
                 }
                 sendBroadcast(scrollIntent)
             }
-            return // Lock cursor position during scroll
+            return
         }
+
+        val prevX = cursorX
+        val prevY = cursorY
 
         rawCursorX = (rawCursorX + deltaX * 15f * sensitivity).coerceIn(0f, screenWidth)
         rawCursorY = (rawCursorY + deltaY * 15f * sensitivity).coerceIn(0f, screenHeight)
 
-        // Apply 1Euro Filter to adaptive-filter raw cursor coordinates in real time
         val now = System.currentTimeMillis()
         cursorX = filterX.filter(rawCursorX, now)
         cursorY = filterY.filter(rawCursorY, now)
 
         updateCursorViewPosition()
+
+        if (isDragModeActive) {
+            val dragIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_DRAG).apply {
+                setPackage(packageName)
+                putExtra(HeadCursorAccessibilityService.EXTRA_FROM_X, prevX)
+                putExtra(HeadCursorAccessibilityService.EXTRA_FROM_Y, prevY)
+                putExtra(HeadCursorAccessibilityService.EXTRA_TO_X, cursorX)
+                putExtra(HeadCursorAccessibilityService.EXTRA_TO_Y, cursorY)
+            }
+            sendBroadcast(dragIntent)
+        }
     }
 
     private fun updateClock() {
@@ -650,19 +669,16 @@ class OverlayService : Service() {
         const val KEY_Y_OFFSET = "hud_y_offset"
         const val KEY_ENABLE_HEAD_CURSOR = "enable_head_cursor"
 
-        // Properties for Vol Up / Vol Down / Mouse Mode mapping
         const val KEY_VOL_UP_ACTION = "vol_up_action"
         const val KEY_VOL_DOWN_ACTION = "vol_down_action"
         const val KEY_VOL_DOWN_HOLD_ACTION = "vol_down_hold_action"
         const val KEY_MOUSE_MODE_ENABLED = "mouse_mode_enabled"
 
-        // Configurable Head Sensitivity & Movement Smoothing
-        const val KEY_HEAD_SENSITIVITY = "head_sensitivity" // 0.1x to 5.0x (Log-filtered, default 0.45x)
+        const val KEY_HEAD_SENSITIVITY = "head_sensitivity"
 
-        // Click Simulation Engine Options
         const val KEY_CLICK_ENGINE   = "click_engine"
-        const val CLICK_ENGINE_TOUCH = "TOUCH_GESTURE" // Simulated Real Touch (50ms single tap)
-        const val CLICK_ENGINE_NODE  = "NODE_CLICK"    // Accessibility Tree Node Click
+        const val CLICK_ENGINE_TOUCH = "TOUCH_GESTURE"
+        const val CLICK_ENGINE_NODE  = "NODE_CLICK"
 
         const val ACTION_VAL_LEFT_CLICK = "LEFT_CLICK"
         const val ACTION_VAL_RIGHT_CLICK = "RIGHT_CLICK"

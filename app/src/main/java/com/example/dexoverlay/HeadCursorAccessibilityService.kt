@@ -19,15 +19,47 @@ import android.view.accessibility.AccessibilityNodeInfo
 class HeadCursorAccessibilityService : AccessibilityService() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var isVolDownLongPressedTriggered = false
+    private var lastClickTimestamp: Long = 0L
+
+    // Volume Down hold state
     private var isVolDownHeld = false
     private var hasScrolledDuringVolDown = false
-    private var lastClickTimestamp = 0L
-
+    private var isVolDownLongPressedTriggered = false
     private val volDownLongPressRunnable = Runnable {
-        isVolDownLongPressedTriggered = true
-        log("KEY INTERCEPT: Volume Down long press (5s) → toggling mouse mode...")
-        sendBroadcast(Intent(ACTION_TOGGLE_MOUSE_MODE).apply { setPackage(packageName) })
+        if (isVolDownHeld && !hasScrolledDuringVolDown) {
+            isVolDownLongPressedTriggered = true
+            log("ACCESSIBILITY: Volume Down held 5s → Toggle Mouse Mode")
+            sendBroadcast(Intent(ACTION_TOGGLE_MOUSE_MODE).apply { setPackage(packageName) })
+        }
+    }
+
+    // Volume Up hold state (Touch Movement / Touch Drag)
+    private var isVolUpHeld = false
+    private var hasDraggedDuringVolUp = false
+    private var volUpPressTime = 0L
+
+    private fun notifyScrollMode(isScrolling: Boolean) {
+        val intent = Intent(ACTION_SCROLL_MODE_CHANGED).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_IS_SCROLLING, isScrolling)
+        }
+        sendBroadcast(intent)
+    }
+
+    private fun notifyDragMode(isDragging: Boolean) {
+        val intent = Intent(ACTION_DRAG_MODE_CHANGED).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_IS_DRAGGING, isDragging)
+        }
+        sendBroadcast(intent)
+    }
+
+    private fun triggerAction(actionName: String) {
+        val intent = Intent(ACTION_TRIGGER_ACTION).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_ACTION_NAME, actionName)
+        }
+        sendBroadcast(intent)
     }
 
     private val clickReceiver = object : BroadcastReceiver() {
@@ -48,6 +80,14 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     log("RECEIVER_SCROLL: Vertical scroll at ($x, $y), deltaY=$deltaY")
                     performSystemScroll(x, y, deltaY)
                 }
+                ACTION_PERFORM_DRAG -> {
+                    val fromX = intent.getFloatExtra(EXTRA_FROM_X, 960f)
+                    val fromY = intent.getFloatExtra(EXTRA_FROM_Y, 540f)
+                    val toX = intent.getFloatExtra(EXTRA_TO_X, 960f)
+                    val toY = intent.getFloatExtra(EXTRA_TO_Y, 540f)
+                    hasDraggedDuringVolUp = true
+                    performSystemDrag(fromX, fromY, toX, toY)
+                }
             }
         }
     }
@@ -65,13 +105,22 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         val filter = IntentFilter().apply {
             addAction(ACTION_PERFORM_CLICK)
             addAction(ACTION_PERFORM_SCROLL)
+            addAction(ACTION_PERFORM_DRAG)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(clickReceiver, filter, RECEIVER_EXPORTED)
         } else {
             registerReceiver(clickReceiver, filter)
         }
-        log("HeadCursorAccessibilityService created and initialized.")
+        log("HeadCursorAccessibilityService created.")
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onInterrupt() {}
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        log("HeadCursorAccessibilityService connected and ready.")
     }
 
     override fun onDestroy() {
@@ -86,7 +135,6 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     private fun performSystemClick(x: Float, y: Float, isRightClick: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
 
-        // 60ms Click Debouncer: prevents hardware button bounces while staying ultra responsive
         val now = System.currentTimeMillis()
         if (now - lastClickTimestamp < 60L) {
             log("CLICK DEBOUNCE: Suppressed rapid click within 60ms")
@@ -102,32 +150,39 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Real Touch Gesture Simulation (10ms tap for instant responsiveness)
         val targetDisplay = DeXDisplayHelper.getTargetDisplay(this)
         val targetDisplayId = targetDisplay.displayId
 
         val path = Path().apply { moveTo(x, y) }
-        val duration = if (isRightClick) 1000L else 10L // 10ms stroke for ultra-fast, snappy response
+        val duration = if (isRightClick) 1000L else 10L
         val stroke = GestureDescription.StrokeDescription(path, 0, duration)
         val gesture = GestureDescription.Builder().apply {
             addStroke(stroke)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setDisplayId(targetDisplayId)
         }.build()
 
-        val typeStr = if (isRightClick) "RIGHT CLICK (touch gesture)" else "LEFT CLICK (simulated touch gesture)"
-        log("ACCESSIBILITY GESTURE: $typeStr at ($x, $y) on DisplayId $targetDisplayId")
-
-        dispatchGesture(gesture, object : GestureResultCallback() {
-            override fun onCompleted(g: GestureDescription?) {
-                log("ACCESSIBILITY GESTURE: ✓ Touch completed at ($x, $y) DisplayId $targetDisplayId")
-            }
-            override fun onCancelled(g: GestureDescription?) {
-                log("ACCESSIBILITY GESTURE: ✗ Touch CANCELLED/BLOCKED at ($x, $y) DisplayId $targetDisplayId")
-            }
-        }, null)
+        val handled = dispatchGesture(gesture, null, null)
+        log("ACCESSIBILITY: Dispatched $duration ms touch tap at ($x, $y) on displayId=$targetDisplayId → result=$handled")
     }
 
-    /** Dispatches a vertical drag gesture at (x, y) to scroll content up/down. */
+    private fun performSystemDrag(fromX: Float, fromY: Float, toX: Float, toY: Float) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        val targetDisplay = DeXDisplayHelper.getTargetDisplay(this)
+        val targetDisplayId = targetDisplay.displayId
+
+        val path = Path().apply {
+            moveTo(fromX, fromY)
+            lineTo(toX, toY)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, 30L)
+        val gesture = GestureDescription.Builder().apply {
+            addStroke(stroke)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setDisplayId(targetDisplayId)
+        }.build()
+
+        dispatchGesture(gesture, null, null)
+    }
+
     private fun performSystemScroll(x: Float, y: Float, deltaY: Float) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
 
@@ -135,13 +190,12 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         val targetDisplayId = targetDisplay.displayId
 
         val startY = y
-        val endY = (y - deltaY).coerceIn(50f, 2500f)
+        val endY = (y - deltaY).coerceIn(0f, 2160f)
 
         val path = Path().apply {
             moveTo(x, startY)
             lineTo(x, endY)
         }
-
         val stroke = GestureDescription.StrokeDescription(path, 0, 120L)
         val gesture = GestureDescription.Builder().apply {
             addStroke(stroke)
@@ -151,7 +205,6 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         dispatchGesture(gesture, null, null)
     }
 
-    /** Walk the accessibility window tree to find a clickable node at (x, y). */
     private fun tryNodeClick(x: Float, y: Float): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return false
         return try {
@@ -167,12 +220,9 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     log("NODE CLICK: ACTION_CLICK on '${node.className}' at ($x,$y) → success=$success window='${window.title}'")
                     return success
                 }
-                log("NODE CLICK: window '${window.title}' bounds=$wBounds contains ($x,$y) but no clickable node found")
             }
-            log("NODE CLICK: No window contains ($x, $y) — windows=${windows.size}")
             false
         } catch (e: Exception) {
-            log("NODE CLICK: Exception: ${e.message}")
             false
         }
     }
@@ -211,11 +261,27 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             if (mouseModeEnabled) {
-                if (action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-                    log("KEY INTERCEPT: Vol Up DOWN → action: $volUpAction (instant)")
-                    triggerAction(volUpAction)
+                if (action == KeyEvent.ACTION_DOWN) {
+                    if (event.repeatCount == 0) {
+                        isVolUpHeld = true
+                        hasDraggedDuringVolUp = false
+                        volUpPressTime = System.currentTimeMillis()
+                        notifyDragMode(true)
+                        log("KEY INTERCEPT: Vol Up DOWN → hold for touch movement/drag, tap for click")
+                    }
+                    return true
+                } else if (action == KeyEvent.ACTION_UP) {
+                    isVolUpHeld = false
+                    notifyDragMode(false)
+
+                    val holdDuration = System.currentTimeMillis() - volUpPressTime
+                    if (!hasDraggedDuringVolUp || holdDuration < 200L) {
+                        log("KEY INTERCEPT: Vol Up UP → tap click ($volUpAction)")
+                        triggerAction(volUpAction)
+                    }
+                    hasDraggedDuringVolUp = false
+                    return true
                 }
-                return true
             }
             return false
         }
@@ -240,7 +306,6 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     notifyScrollMode(false)
                 }
 
-                // Execute click on release if the user didn't scroll or trigger 5s long press
                 if (mouseModeEnabled && !isVolDownLongPressedTriggered && !hasScrolledDuringVolDown) {
                     log("KEY INTERCEPT: Vol Down UP → action: $volDownAction")
                     triggerAction(volDownAction)
@@ -265,35 +330,29 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         return super.onKeyEvent(event)
     }
 
-    private fun notifyScrollMode(active: Boolean) {
-        sendBroadcast(Intent(ACTION_SCROLL_MODE_CHANGED).apply {
-            setPackage(packageName)
-            putExtra(EXTRA_IS_SCROLLING, active)
-        })
-    }
-
-    private fun triggerAction(actionName: String) {
-        sendBroadcast(Intent(ACTION_TRIGGER_ACTION).apply {
-            setPackage(packageName)
-            putExtra(EXTRA_ACTION_NAME, actionName)
-        })
-    }
-
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
-    override fun onInterrupt() {}
-
     companion object {
-        const val ACTION_PERFORM_CLICK      = "com.example.dexoverlay.PERFORM_CLICK"
-        const val ACTION_PERFORM_SCROLL     = "com.example.dexoverlay.PERFORM_SCROLL"
-        const val ACTION_TOGGLE_MOUSE_MODE  = "com.example.dexoverlay.TOGGLE_MOUSE_MODE"
-        const val ACTION_TRIGGER_ACTION     = "com.example.dexoverlay.TRIGGER_ACTION"
-        const val ACTION_SCROLL_MODE_CHANGED = "com.example.dexoverlay.SCROLL_MODE_CHANGED"
+        const val ACTION_PERFORM_CLICK  = "com.example.dexoverlay.PERFORM_CLICK"
+        const val ACTION_PERFORM_SCROLL = "com.example.dexoverlay.PERFORM_SCROLL"
+        const val ACTION_PERFORM_DRAG   = "com.example.dexoverlay.PERFORM_DRAG"
 
-        const val EXTRA_ACTION_NAME     = "action_name"
-        const val EXTRA_X               = "click_x"
-        const val EXTRA_Y               = "click_y"
-        const val EXTRA_IS_RIGHT        = "is_right"
-        const val EXTRA_SCROLL_DELTA_Y  = "scroll_delta_y"
-        const val EXTRA_IS_SCROLLING    = "is_scrolling"
+        const val EXTRA_X = "extra_x"
+        const val EXTRA_Y = "extra_y"
+        const val EXTRA_IS_RIGHT = "extra_is_right"
+        const val EXTRA_SCROLL_DELTA_Y = "extra_scroll_delta_y"
+
+        const val EXTRA_FROM_X = "extra_from_x"
+        const val EXTRA_FROM_Y = "extra_from_y"
+        const val EXTRA_TO_X = "extra_to_x"
+        const val EXTRA_TO_Y = "extra_to_y"
+
+        const val ACTION_TRIGGER_ACTION = "com.example.dexoverlay.TRIGGER_ACTION"
+        const val EXTRA_ACTION_NAME = "extra_action_name"
+
+        const val ACTION_TOGGLE_MOUSE_MODE = "com.example.dexoverlay.TOGGLE_MOUSE_MODE"
+        const val ACTION_SCROLL_MODE_CHANGED = "com.example.dexoverlay.SCROLL_MODE_CHANGED"
+        const val EXTRA_IS_SCROLLING = "extra_is_scrolling"
+
+        const val ACTION_DRAG_MODE_CHANGED = "com.example.dexoverlay.DRAG_MODE_CHANGED"
+        const val EXTRA_IS_DRAGGING = "extra_is_dragging"
     }
 }
