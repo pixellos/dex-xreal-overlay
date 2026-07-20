@@ -10,6 +10,7 @@ import android.graphics.Path
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 
@@ -21,6 +22,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
     private val volDownLongPressRunnable = Runnable {
         isVolDownLongPressedTriggered = true
+        log("KEY INTERCEPT: Volume Down long press (5s) triggered! Toggling mouse mode...")
         val toggleIntent = Intent(ACTION_TOGGLE_MOUSE_MODE)
         sendBroadcast(toggleIntent)
     }
@@ -36,6 +38,15 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun log(msg: String) {
+        Log.d("HeadCursorService", msg)
+        LogBuffer.add(msg)
+        val intent = Intent(MainActivity.ACTION_LOG_UPDATE).apply {
+            putExtra(MainActivity.EXTRA_LOG_MSG, msg)
+        }
+        sendBroadcast(intent)
+    }
+
     override fun onCreate() {
         super.onCreate()
         val filter = IntentFilter(ACTION_PERFORM_CLICK)
@@ -44,12 +55,14 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         } else {
             registerReceiver(clickReceiver, filter)
         }
+        log("HeadCursorAccessibilityService created and initialized.")
     }
 
     override fun onDestroy() {
         super.onDestroy()
         try { unregisterReceiver(clickReceiver) } catch (e: Exception) {}
         mainHandler.removeCallbacks(volDownLongPressRunnable)
+        log("HeadCursorAccessibilityService destroyed.")
     }
 
     private fun performSystemClick(x: Float, y: Float, isRightClick: Boolean) {
@@ -67,6 +80,10 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent): Boolean {
         val keyCode = event.keyCode
         val action = event.action
+        val actionStr = if (action == KeyEvent.ACTION_DOWN) "DOWN" else "UP"
+
+        // LOG ALL KEY EVENTS ENTERING THE ACCESSIBILITY DRIVER
+        log("KEY INTERCEPT: keyCode=$keyCode (${KeyEvent.keyCodeToString(keyCode)}), action=$actionStr")
 
         val prefs = getSharedPreferences("dex_hud_prefs", Context.MODE_PRIVATE)
         val mouseModeEnabled = prefs.getBoolean("mouse_mode_enabled", true)
@@ -76,6 +93,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             if (mouseModeEnabled) {
                 if (action == KeyEvent.ACTION_DOWN) {
+                    log("KEY INTERCEPT: Volume Up DOWN -> executing mapped action: $volUpAction")
                     triggerAction(volUpAction)
                 }
                 return true
@@ -89,11 +107,13 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     isVolDownLongPressedTriggered = false
                     volDownPressedTime = System.currentTimeMillis()
                     mainHandler.postDelayed(volDownLongPressRunnable, 5000) // 5 seconds long press
+                    log("KEY INTERCEPT: Volume Down DOWN -> starting 5s Mouse Mode toggle timer...")
                 }
                 if (mouseModeEnabled) return true
             } else if (action == KeyEvent.ACTION_UP) {
                 mainHandler.removeCallbacks(volDownLongPressRunnable)
                 if (!isVolDownLongPressedTriggered && mouseModeEnabled) {
+                    log("KEY INTERCEPT: Volume Down UP -> executing mapped action: $volDownAction")
                     triggerAction(volDownAction)
                 }
                 val consumed = mouseModeEnabled || isVolDownLongPressedTriggered
@@ -109,6 +129,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         ) {
             if (mouseModeEnabled) {
                 if (action == KeyEvent.ACTION_DOWN) {
+                    log("KEY INTERCEPT: Bluetooth clicker key $keyCode -> executing Left Click")
                     triggerAction("LEFT_CLICK")
                 }
                 return true
