@@ -1,10 +1,8 @@
 package com.example.dexoverlay
 
 import android.app.Activity
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -12,8 +10,6 @@ import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -28,31 +24,8 @@ import android.widget.Toast
 
 class MainActivity : Activity() {
 
-    private var debugTextView: TextView? = null
-    private val mainHandler = Handler(Looper.getMainLooper())
-
-    private val logReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == ACTION_LOG_UPDATE) {
-                val logMsg = intent.getStringExtra(EXTRA_LOG_MSG) ?: ""
-                mainHandler.post {
-                    val currentText = debugTextView?.text?.toString() ?: ""
-                    val lines = currentText.split("\n").takeLast(8).toMutableList()
-                    lines.add("> $logMsg")
-                    debugTextView?.text = lines.joinToString("\n")
-                }
-            }
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(logReceiver, IntentFilter(ACTION_LOG_UPDATE), Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(logReceiver, IntentFilter(ACTION_LOG_UPDATE))
-        }
 
         stopOverlayService()
 
@@ -88,7 +61,7 @@ class MainActivity : Activity() {
         headerCard.addView(headerText)
 
         val statusTag = TextView(this).apply {
-            text = "[ XREAL 1s DEVELOPER MODE ]"
+            text = "[ DEVELOPER SYSTEM ]"
             textSize = 10f
             setTextColor(Color.parseColor("#00E5FF"))
             typeface = Typeface.MONOSPACE
@@ -99,7 +72,7 @@ class MainActivity : Activity() {
         val spacer1 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer1)
 
-        // --- Card 1: XREAL 1s Developer Selector ---
+        // --- Card 1: XREAL 1s Tracking Selector & Diagnostics ---
         val selectedEngine = prefs.getString(OverlayService.KEY_TRACKING_ENGINE, OverlayService.ENGINE_USB) ?: OverlayService.ENGINE_USB
         val devCard = createCompactCard("👓 XREAL 1s TRACKING ENGINE SELECTOR", "#00E5FF")
 
@@ -164,20 +137,20 @@ class MainActivity : Activity() {
         }
         devCard.addView(btnUsbPermission)
 
-        // Live Diagnostic Terminal Log Card
-        debugTextView = TextView(this).apply {
-            text = "> XREAL 1s Connection Terminal Ready.\n> Select tracking engine and start HUD."
-            textSize = 9f
+        // Large Diagnostics Access Button
+        val btnDiagnostics = Button(this).apply {
+            text = "🔎 OPEN FULL DIAGNOSTICS & SYSTEM LOGS"
+            setBackgroundColor(Color.parseColor("#0C182B"))
             setTextColor(Color.parseColor("#00FF66"))
             typeface = Typeface.MONOSPACE
-            setPadding(12, 10, 12, 10)
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#050B14"))
-                setStroke(1, Color.parseColor("#00FF66"))
-                cornerRadius = 2f
+            textSize = 11f
+            setTypeface(typeface, Typeface.BOLD)
+            setOnClickListener {
+                val intent = Intent(this@MainActivity, DiagnosticsActivity::class.java)
+                startActivity(intent)
             }
         }
-        devCard.addView(debugTextView)
+        devCard.addView(btnDiagnostics)
         rootLayout.addView(devCard)
 
         val spacer_mode = TextView(this).apply { text = " " }
@@ -570,13 +543,6 @@ class MainActivity : Activity() {
     private fun stopOverlayService() {
         val intent = Intent(this, OverlayService::class.java)
         stopService(intent)
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        try {
-            unregisterReceiver(logReceiver)
-        } catch (e: Exception) {}
     }
 
     companion object {

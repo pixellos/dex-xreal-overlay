@@ -36,6 +36,11 @@
                 android:resource="@xml/device_filter" />
         </activity>
 
+        <activity
+            android:name=".DiagnosticsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+
         <service
             android:name=".OverlayService"
             android:enabled="true"
