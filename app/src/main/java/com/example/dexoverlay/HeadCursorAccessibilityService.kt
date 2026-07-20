@@ -73,7 +73,21 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             val duration = if (isRightClick) 1000L else 50L
             val stroke = GestureDescription.StrokeDescription(path, 0, duration)
             val gesture = GestureDescription.Builder().addStroke(stroke).build()
-            dispatchGesture(gesture, null, null)
+            
+            val clickTypeStr = if (isRightClick) "RIGHT CLICK (Long Press)" else "LEFT CLICK (Tap)"
+            log("ACCESSIBILITY GESTURE: Dispatched $clickTypeStr at coordinate ($x, $y)")
+
+            dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    super.onCompleted(gestureDescription)
+                    log("ACCESSIBILITY GESTURE: Successfully completed click at ($x, $y)")
+                }
+
+                override fun onCancelled(gestureDescription: GestureDescription?) {
+                    super.onCancelled(gestureDescription)
+                    log("ACCESSIBILITY GESTURE: Click gesture was CANCELLED/BLOCKED by system at ($x, $y)")
+                }
+            }, null)
         }
     }
 
