@@ -305,20 +305,66 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         val targetDisplay = DeXDisplayHelper.getTargetDisplay(this)
         val targetDisplayId = targetDisplay.displayId
 
+        // Try direct accessibility Node Scroll first
+        if (tryNodeScroll(x, y, deltaY > 0)) {
+            log("ACCESSIBILITY: Executed direct Node Scroll at ($x, $y)")
+            return
+        }
+
+        // Fallback: 450-pixel gesture swipe over 40ms for fast fling scrolling
+        val strokeDist = if (Math.abs(deltaY) > 50f) deltaY else if (deltaY >= 0) 450f else -450f
         val startY = y
-        val endY = (y - deltaY).coerceIn(0f, 2160f)
+        val endY = (y - strokeDist).coerceIn(50f, 2100f)
 
         val path = Path().apply {
             moveTo(x, startY)
             lineTo(x, endY)
         }
-        val stroke = GestureDescription.StrokeDescription(path, 0, 120L)
+        val stroke = GestureDescription.StrokeDescription(path, 0, 40L)
         val gesture = GestureDescription.Builder().apply {
             addStroke(stroke)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setDisplayId(targetDisplayId)
         }.build()
 
-        dispatchGesture(gesture, null, null)
+        val handled = dispatchGesture(gesture, null, null)
+        log("ACCESSIBILITY: Dispatched scroll gesture from $startY to $endY at x=$x → handled=$handled")
+    }
+
+    private fun tryNodeScroll(x: Float, y: Float, scrollDown: Boolean): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return false
+        return try {
+            val xi = x.toInt(); val yi = y.toInt()
+            for (window in windows) {
+                val wBounds = Rect()
+                window.getBoundsInScreen(wBounds)
+                if (!wBounds.contains(xi, yi)) continue
+                val root = window.root ?: continue
+                val node = findScrollableNodeAt(root, xi, yi)
+                if (node != null) {
+                    val action = if (scrollDown) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+                    val success = node.performAction(action)
+                    log("NODE SCROLL: ACTION_SCROLL on '${node.className}' → success=$success")
+                    return success
+                }
+            }
+            false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun findScrollableNodeAt(node: AccessibilityNodeInfo, x: Int, y: Int): AccessibilityNodeInfo? {
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        if (!bounds.contains(x, y)) return null
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findScrollableNodeAt(child, x, y)
+            if (result != null) return result
+        }
+
+        return if (node.isScrollable) node else null
     }
 
     private fun tryNodeClick(x: Float, y: Float): Boolean {

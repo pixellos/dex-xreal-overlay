@@ -577,14 +577,14 @@ class OverlayService : Service() {
 
         if (isScrollModeActive) {
             scrollAccumulatorY += deltaY * 120f * sensitivity
-            if (Math.abs(scrollAccumulatorY) >= 20f) {
-                val amountY = scrollAccumulatorY
+            if (Math.abs(scrollAccumulatorY) >= 15f) {
+                val scrollDirY = if (scrollAccumulatorY > 0) 450f else -450f
                 scrollAccumulatorY = 0f
                 val scrollIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_SCROLL).apply {
                     setPackage(packageName)
                     putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
                     putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
-                    putExtra(HeadCursorAccessibilityService.EXTRA_SCROLL_DELTA_Y, amountY)
+                    putExtra(HeadCursorAccessibilityService.EXTRA_SCROLL_DELTA_Y, scrollDirY)
                 }
                 sendBroadcast(scrollIntent)
             }
