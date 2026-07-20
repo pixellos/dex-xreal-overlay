@@ -1,13 +1,14 @@
 package com.example.dexoverlay
 
 import java.text.SimpleDateFormat
+import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
 
 object LogBuffer {
-    private val logs = mutableListOf<String>()
+    private val logs = ArrayDeque<String>(1005)
     private val dateFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
-    
+
     @Volatile
     var totalLogsCount = 0L
         private set
@@ -15,12 +16,12 @@ object LogBuffer {
     @Synchronized
     fun add(msg: String) {
         val timestamp = dateFormat.format(Date())
-        logs.add("[$timestamp] $msg")
+        logs.addLast("[$timestamp] $msg")
         totalLogsCount++
         
-        // Cap the memory buffer size at 1000 items
+        // O(1) buffer capacity enforcement
         if (logs.size > 1000) {
-            logs.removeAt(0)
+            logs.removeFirst()
         }
     }
 
@@ -29,17 +30,17 @@ object LogBuffer {
         val countToFetch = (totalLogsCount - afterTotalIndex).toInt()
         if (countToFetch <= 0) return emptyList()
 
-        val startIndex = (logs.size - countToFetch).coerceAtLeast(0)
-        if (startIndex < logs.size) {
-            return ArrayList(logs.subList(startIndex, logs.size))
+        val list = logs.toList()
+        val startIndex = (list.size - countToFetch).coerceAtLeast(0)
+        return if (startIndex < list.size) {
+            list.subList(startIndex, list.size)
+        } else {
+            emptyList()
         }
-        return emptyList()
     }
 
     @Synchronized
-    fun getLogs(): List<String> {
-        return ArrayList(logs)
-    }
+    fun getLogs(): List<String> = logs.toList()
 
     @Synchronized
     fun clear() {

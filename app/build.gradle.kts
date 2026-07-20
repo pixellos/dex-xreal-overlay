@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.dexoverlay"
         minSdk = 26
         targetSdk = 34
-        versionCode = 78
-        versionName = "6.42"
+        versionCode = 80
+        versionName = "6.44"
     }
 
     signingConfigs {

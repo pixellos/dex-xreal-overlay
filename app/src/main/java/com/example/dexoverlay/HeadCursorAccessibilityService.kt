@@ -10,7 +10,6 @@ import android.graphics.Color
 import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
-import android.graphics.Typeface
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -45,7 +44,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     private val volDownLongPressRunnable = Runnable {
         if (isVolDownHeld && !hasScrolledDuringVolDown) {
             isVolDownLongPressedTriggered = true
-            log("ACCESSIBILITY: Volume Down held 5s → Toggle Mouse Mode")
+            log("ACCESSIBILITY: Volume Down held 3s → Toggle Mouse Mode")
             sendBroadcast(Intent(ACTION_TOGGLE_MOUSE_MODE).apply { setPackage(packageName) })
         }
     }
@@ -118,17 +117,22 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     val fromY = intent.getFloatExtra(EXTRA_FROM_Y, 540f)
                     val toX = intent.getFloatExtra(EXTRA_TO_X, 960f)
                     val toY = intent.getFloatExtra(EXTRA_TO_Y, 540f)
-                    hasDraggedDuringVolUp = true
-                    performSystemDrag(fromX, fromY, toX, toY)
+                    performDirectDrag(fromX, fromY, toX, toY)
                 }
             }
         }
+    }
+
+    fun performDirectDrag(fromX: Float, fromY: Float, toX: Float, toY: Float) {
+        hasDraggedDuringVolUp = true
+        performSystemDrag(fromX, fromY, toX, toY)
     }
 
     private fun log(msg: String) {
         Log.d("HeadCursorService", msg)
         LogBuffer.add(msg)
         sendBroadcast(Intent(MainActivity.ACTION_LOG_UPDATE).apply {
+            setPackage(packageName)
             putExtra(MainActivity.EXTRA_LOG_MSG, msg)
         })
     }
@@ -142,7 +146,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             addAction(ACTION_PERFORM_DRAG)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(clickReceiver, filter, RECEIVER_EXPORTED)
+            registerReceiver(clickReceiver, filter, RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(clickReceiver, filter)
         }
@@ -209,7 +213,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                 cursorLayout = container
                 cursorRootFrame = rootFrame
 
-                // TYPE_ACCESSIBILITY_OVERLAY sits at the absolute top z-index, rendering ABOVE system popups, Start Menu & Taskbars
+                // TYPE_ACCESSIBILITY_OVERLAY sits at top z-index, rendering ABOVE system popups, Start Menu & Taskbars
                 val params = WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
                     WindowManager.LayoutParams.MATCH_PARENT,
@@ -254,7 +258,11 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         mainHandler.removeCallbacks(volDownLongPressRunnable)
         mainHandler.removeCallbacks(volDownTapRunnable)
         if (cursorRootFrame != null && windowManager != null) {
-            try { windowManager?.removeView(cursorRootFrame) } catch (e: Exception) {}
+            try {
+                if (cursorRootFrame?.isAttachedToWindow == true) {
+                    windowManager?.removeView(cursorRootFrame)
+                }
+            } catch (e: Exception) {}
         }
         log("HeadCursorAccessibilityService destroyed.")
     }
@@ -339,14 +347,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setDisplayId(targetDisplayId)
         }.build()
 
-        val handled = dispatchGesture(gesture, object : GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription?) {
-                log("ACCESSIBILITY: Scroll gesture completed successfully!")
-            }
-            override fun onCancelled(gestureDescription: GestureDescription?) {
-                log("ACCESSIBILITY: Scroll gesture cancelled by system.")
-            }
-        }, null)
+        val handled = dispatchGesture(gesture, null, null)
         log("ACCESSIBILITY: Dispatched 180ms scroll gesture from $startY to $endY at x=$x → handled=$handled")
     }
 
@@ -427,7 +428,14 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             if (result != null) return result
         }
 
-        return if (node.isClickable) node else null
+        var curr: AccessibilityNodeInfo? = node
+        var depth = 0
+        while (curr != null && depth < 5) {
+            if (curr.isClickable) return curr
+            curr = curr.parent
+            depth++
+        }
+        return null
     }
 
     // ── Key event handling ────────────────────────────────────────────────────
@@ -481,6 +489,10 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     isVolDownHeld = true
                     hasScrolledDuringVolDown = false
                     isVolDownLongPressedTriggered = false
+
+                    // Post 3s long press runnable to toggle mouse mode
+                    mainHandler.removeCallbacks(volDownLongPressRunnable)
+                    mainHandler.postDelayed(volDownLongPressRunnable, 3000L)
 
                     if (volDownHoldAction == OverlayService.ACTION_VAL_SCROLL) {
                         notifyScrollMode(true)
