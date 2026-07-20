@@ -1,14 +1,18 @@
 package com.example.dexoverlay
 
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -23,8 +27,31 @@ import android.widget.Toast
 
 class MainActivity : Activity() {
 
+    private var debugTextView: TextView? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val logReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_LOG_UPDATE) {
+                val logMsg = intent.getStringExtra(EXTRA_LOG_MSG) ?: ""
+                mainHandler.post {
+                    val currentText = debugTextView?.text?.toString() ?: ""
+                    val lines = currentText.split("\n").takeLast(6).toMutableList()
+                    lines.add("> $logMsg")
+                    debugTextView?.text = lines.joinToString("\n")
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(logReceiver, IntentFilter(ACTION_LOG_UPDATE), Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(logReceiver, IntentFilter(ACTION_LOG_UPDATE))
+        }
 
         stopOverlayService()
 
@@ -50,7 +77,7 @@ class MainActivity : Activity() {
         }
 
         val headerText = TextView(this).apply {
-            text = "CYBERDECK v554 // HUD OS"
+            text = "CYBERDECK v555 // HUD OS"
             textSize = 14f
             setTextColor(Color.parseColor("#FFE600"))
             typeface = Typeface.MONOSPACE
@@ -110,8 +137,9 @@ class MainActivity : Activity() {
         }
         connCard.addView(btnAccessibility)
 
-        val infoTag = TextView(this).apply {
-            text = "> Listening for XREAL 1s TCP stream at 169.254.2.1:52998\n> Zero USB permission prompts required!"
+        // Live Diagnostic Terminal Log Card
+        debugTextView = TextView(this).apply {
+            text = "> XREAL 1s Connection Terminal Ready.\n> Plug in XREAL 1s and start HUD."
             textSize = 9f
             setTextColor(Color.parseColor("#00FF66"))
             typeface = Typeface.MONOSPACE
@@ -122,7 +150,7 @@ class MainActivity : Activity() {
                 cornerRadius = 2f
             }
         }
-        connCard.addView(infoTag)
+        connCard.addView(debugTextView)
         rootLayout.addView(connCard)
 
         val spacer_mode = TextView(this).apply { text = " " }
@@ -458,5 +486,17 @@ class MainActivity : Activity() {
     private fun stopOverlayService() {
         val intent = Intent(this, OverlayService::class.java)
         stopService(intent)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            unregisterReceiver(logReceiver)
+        } catch (e: Exception) {}
+    }
+
+    companion object {
+        const val ACTION_LOG_UPDATE = "com.example.dexoverlay.LOG_UPDATE"
+        const val EXTRA_LOG_MSG = "log_msg"
     }
 }

@@ -322,7 +322,7 @@ class OverlayService : Service() {
         }
 
         // 1. Direct XREAL 1s TCP Service Driver (Port 52998 on USB-Ethernet 169.254.2.1)
-        tcpImuDriver = XrealOneTcpImuDriver().apply {
+        tcpImuDriver = XrealOneTcpImuDriver(this).apply {
             onHeadMoveListener = { dx, dy -> onHeadMove(dx, dy) }
             startListening()
         }
