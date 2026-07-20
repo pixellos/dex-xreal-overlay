@@ -25,7 +25,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import java.io.BufferedReader
+import java.io.File
 import java.io.FileReader
+import java.io.FileWriter
 import java.net.NetworkInterface
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -204,19 +206,43 @@ class DiagnosticsActivity : Activity() {
         val spacer2 = TextView(this).apply { text = " " }
         rootLayout.addView(spacer2)
 
-        // Clear Logs Button
+        // Log Action Row (Clear & Export)
+        val actionRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
         val btnClear = Button(this).apply {
-            text = "CLEAR LOG TERMINAL"
+            text = "CLEAR LOGS"
             setBackgroundColor(Color.parseColor("#FF0055"))
             setTextColor(Color.WHITE)
             typeface = Typeface.MONOSPACE
             textSize = 11f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, 4, 0)
+            }
             setOnClickListener {
                 LogBuffer.clear()
                 consoleTextView.text = "> Console Cleared.\n"
             }
         }
-        rootLayout.addView(btnClear)
+        actionRow.addView(btnClear)
+
+        val btnExport = Button(this).apply {
+            text = "📤 EXPORT & SHARE LOGS"
+            setBackgroundColor(Color.parseColor("#00E5FF"))
+            setTextColor(Color.BLACK)
+            typeface = Typeface.MONOSPACE
+            textSize = 11f
+            setTypeface(typeface, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(4, 0, 0, 0)
+            }
+            setOnClickListener {
+                exportAndShareLogs()
+            }
+        }
+        actionRow.addView(btnExport)
+        rootLayout.addView(actionRow)
 
         // Scrollable Console Text View
         scrollView = ScrollView(this).apply {
@@ -309,6 +335,21 @@ class DiagnosticsActivity : Activity() {
             scrollView.post {
                 scrollView.fullScroll(ScrollView.FOCUS_DOWN)
             }
+        }
+    }
+
+    private fun exportAndShareLogs() {
+        try {
+            val allLogs = consoleTextView.text.toString()
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "Cyberdeck Diagnostics Log Report")
+                putExtra(Intent.EXTRA_TEXT, allLogs)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Share Diagnostics Report via"))
+            Toast.makeText(this, "Logs exported to share dialog!", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 

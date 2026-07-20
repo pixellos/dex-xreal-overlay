@@ -149,25 +149,27 @@ class XrealOneImuManager(private val context: Context) {
             var connectedHost = ""
             val candidates = collectTargetHostCandidates()
 
-            log("IP candidates gathered: $candidates. Probing ports...")
+            log("TCP PROBE: Starting sequence over gathered candidates: $candidates")
 
             // Try connecting to candidates sequentially
             for (host in candidates) {
                 if (!isRunning) break
                 try {
                     val s = Socket()
+                    s.tcpNoDelay = true
+                    s.keepAlive = true
                     
-                    // Route socket specifically to the USB network card interface (SELinux compliant)
+                    log("TCP PROBE: Attempting connect to [$host:52998] (NoDelay=true)")
                     bindSocketToUsbNetworkIfPossible(s)
 
                     s.connect(InetSocketAddress(host, 52998), 1000)
                     s.soTimeout = 2000
                     connectedSocket = s
                     connectedHost = host
-                    log("CONNECTED successfully to $host:52998!")
+                    log("TCP PROBE: SUCCESS! Established connection to $host:52998")
                     break
                 } catch (e: Exception) {
-                    // Try next candidate
+                    log("TCP PROBE: Failed connecting to [$host]: ${e.message}")
                 }
             }
 
@@ -177,10 +179,15 @@ class XrealOneImuManager(private val context: Context) {
                     val inputStream: InputStream = connectedSocket.getInputStream()
                     val buffer = ByteArray(2048)
                     val accumulator = ByteBuffer.allocate(4096).order(ByteOrder.LITTLE_ENDIAN)
+                    log("TCP STREAM: Handshake completed, listening for input packets...")
 
+                    var frameCount = 0L
                     while (isRunning && connectedSocket.isConnected && !connectedSocket.isClosed) {
                         val bytesRead = inputStream.read(buffer)
-                        if (bytesRead <= 0) break
+                        if (bytesRead <= 0) {
+                            log("TCP STREAM: Read EOF (bytesRead = $bytesRead)")
+                            break
+                        }
 
                         accumulator.put(buffer, 0, bytesRead)
                         accumulator.flip()
@@ -196,6 +203,11 @@ class XrealOneImuManager(private val context: Context) {
 
                                 onHeadMoveListener?.invoke(gyroY * 0.5f, -gyroX * 0.5f)
 
+                                frameCount++
+                                if (frameCount % 1000 == 0L) {
+                                    log("TCP STREAM: Successfully processed $frameCount raw frames.")
+                                }
+
                                 accumulator.position(startPos + 134)
                             } else {
                                 accumulator.position(startPos + 1)
@@ -204,15 +216,16 @@ class XrealOneImuManager(private val context: Context) {
                         accumulator.compact()
                     }
                 } catch (e: Exception) {
-                    log("TCP read error from $connectedHost: ${e.message}")
+                    log("TCP STREAM: Socket read error from $connectedHost: ${e.message}")
                 } finally {
                     try { connectedSocket.close() } catch (ex: Exception) {}
                     tcpSocket = null
+                    log("TCP STREAM: Connection closed.")
                 }
             }
 
             if (isRunning) {
-                log("Re-scanning and retrying TCP stream in 3s...")
+                log("TCP STREAM: Restarting candidates scan in 3 seconds...")
                 try { Thread.sleep(3000) } catch (ie: Exception) {}
             }
         }
@@ -227,14 +240,15 @@ class XrealOneImuManager(private val context: Context) {
                     val linkProps = cm.getLinkProperties(network) ?: continue
                     val ifaceName = linkProps.interfaceName?.lowercase() ?: continue
                     if (ifaceName.contains("usb") || ifaceName.contains("rndis") || ifaceName.contains("eth") || ifaceName.contains("cdc")) {
-                        log("Routing: Binding TCP socket to interface [$ifaceName]")
+                        log("ROUTING: Binding TCP socket specifically to link interface [$ifaceName]")
                         network.bindSocket(socket)
                         return
                     }
                 }
             }
+            log("ROUTING: No matching ConnectivityManager network interface found for binding.")
         } catch (e: Exception) {
-            log("Network socket binding failed: ${e.message}")
+            log("ROUTING: Error binding socket to interface: ${e.message}")
         }
     }
 
@@ -243,9 +257,12 @@ class XrealOneImuManager(private val context: Context) {
         val candidates = mutableListOf<String>()
         val prefs = context.getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
 
+        log("DISCOVERY: Gathering network target candidate IPs...")
+
         // 1. User manual override
         val customIp = prefs.getString("custom_target_host_ip", "") ?: ""
         if (customIp.trim().isNotEmpty()) {
+            log("DISCOVERY: Adding manual override target: ${customIp.trim()}")
             candidates.add(customIp.trim())
             return candidates
         }
@@ -259,17 +276,19 @@ class XrealOneImuManager(private val context: Context) {
                     val linkProps = cm.getLinkProperties(network) ?: continue
                     val ifaceName = linkProps.interfaceName?.lowercase() ?: continue
                     if (ifaceName.contains("usb") || ifaceName.contains("rndis") || ifaceName.contains("eth") || ifaceName.contains("cdc")) {
+                        log("DISCOVERY: CM interface match: $ifaceName")
                         for (route in linkProps.routes) {
                             val gateway = route.gateway?.hostAddress
-                            if (gateway != null && gateway != "0.0.0.0" && !candidates.contains(gateway)) {
-                                candidates.add(gateway)
+                            if (gateway != null && gateway != "0.0.0.0") {
+                                log("DISCOVERY: Adding route gateway candidate: $gateway")
+                                if (!candidates.contains(gateway)) candidates.add(gateway)
                             }
                         }
                     }
                 }
             }
         } catch (e: Exception) {
-            log("CM candidate scan skipped: ${e.message}")
+            log("DISCOVERY: CM query error: ${e.message}")
         }
 
         // 3. ARP Cache (/proc/net/arp)
@@ -283,9 +302,8 @@ class XrealOneImuManager(private val context: Context) {
                         val ip = tokens[0]
                         val device = tokens[5].lowercase()
                         if (device.contains("usb") || device.contains("rndis") || device.contains("eth") || device.contains("cdc")) {
-                            if (!candidates.contains(ip)) {
-                                candidates.add(ip)
-                            }
+                            log("DISCOVERY: Found ARP peer candidate: $ip on interface $device")
+                            if (!candidates.contains(ip)) candidates.add(ip)
                         }
                     }
                 }
@@ -306,9 +324,8 @@ class XrealOneImuManager(private val context: Context) {
                             if (gatewayHex != "00000000") {
                                 val valHex = gatewayHex.toLong(16)
                                 val ip = "${valHex and 0xFF}.${(valHex shr 8) and 0xFF}.${(valHex shr 16) and 0xFF}.${(valHex shr 24) and 0xFF}"
-                                if (!candidates.contains(ip)) {
-                                    candidates.add(ip)
-                                }
+                                log("DISCOVERY: Found route gateway candidate: $ip on interface $iface")
+                                if (!candidates.contains(ip)) candidates.add(ip)
                             }
                         }
                     }
@@ -328,12 +345,12 @@ class XrealOneImuManager(private val context: Context) {
                         val addr = addrs.nextElement()
                         if (!addr.isLoopbackAddress && addr.hostAddress.indexOf(':') < 0) {
                             val host = addr.hostAddress
+                            log("DISCOVERY: Matching local IP: $host on interface $name")
                             val parts = host.split(".")
                             if (parts.size == 4) {
                                 val peerIp = "${parts[0]}.${parts[1]}.${parts[2]}.1"
-                                if (!candidates.contains(peerIp)) {
-                                    candidates.add(peerIp)
-                                }
+                                log("DISCOVERY: Adding guessed gateway candidate: $peerIp")
+                                if (!candidates.contains(peerIp)) candidates.add(peerIp)
                             }
                         }
                     }
@@ -345,6 +362,7 @@ class XrealOneImuManager(private val context: Context) {
         if (!candidates.contains("169.254.2.1")) candidates.add("169.254.2.1")
         if (!candidates.contains("169.254.1.1")) candidates.add("169.254.1.1")
 
+        log("DISCOVERY: Final candidate set gathered: $candidates")
         return candidates
     }
 
