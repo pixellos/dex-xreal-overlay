@@ -33,6 +33,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                 val x = intent.getFloatExtra(EXTRA_X, 960f)
                 val y = intent.getFloatExtra(EXTRA_Y, 540f)
                 val isRight = intent.getBooleanExtra(EXTRA_IS_RIGHT, false)
+                log("RECEIVER_CLICK: Executing mapped click at coordinate ($x, $y)")
                 performSystemClick(x, y, isRight)
             }
         }
@@ -72,20 +73,30 @@ class HeadCursorAccessibilityService : AccessibilityService() {
             }
             val duration = if (isRightClick) 1000L else 50L
             val stroke = GestureDescription.StrokeDescription(path, 0, duration)
-            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+            
+            // Query Samsung DeX/External display ID dynamically
+            val targetDisplay = DeXDisplayHelper.getTargetDisplay(this)
+            val targetDisplayId = targetDisplay.displayId
+
+            val gesture = GestureDescription.Builder().apply {
+                addStroke(stroke)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    setDisplayId(targetDisplayId)
+                }
+            }.build()
             
             val clickTypeStr = if (isRightClick) "RIGHT CLICK (Long Press)" else "LEFT CLICK (Tap)"
-            log("ACCESSIBILITY GESTURE: Dispatched $clickTypeStr at coordinate ($x, $y)")
+            log("ACCESSIBILITY GESTURE: Dispatched $clickTypeStr at coordinate ($x, $y) on DisplayId $targetDisplayId")
 
             dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
                     super.onCompleted(gestureDescription)
-                    log("ACCESSIBILITY GESTURE: Successfully completed click at ($x, $y)")
+                    log("ACCESSIBILITY GESTURE: Successfully completed click at ($x, $y) on DisplayId $targetDisplayId")
                 }
 
                 override fun onCancelled(gestureDescription: GestureDescription?) {
                     super.onCancelled(gestureDescription)
-                    log("ACCESSIBILITY GESTURE: Click gesture was CANCELLED/BLOCKED by system at ($x, $y)")
+                    log("ACCESSIBILITY GESTURE: Click gesture was CANCELLED/BLOCKED by system at ($x, $y) on DisplayId $targetDisplayId")
                 }
             }, null)
         }

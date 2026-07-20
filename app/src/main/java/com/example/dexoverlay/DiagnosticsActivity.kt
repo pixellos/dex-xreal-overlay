@@ -1,10 +1,8 @@
 package com.example.dexoverlay
 
 import android.app.Activity
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -13,6 +11,8 @@ import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
@@ -29,9 +29,6 @@ import java.io.FileReader
 import java.io.FileWriter
 import java.io.InputStreamReader
 import java.net.NetworkInterface
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class DiagnosticsActivity : Activity() {
 
@@ -39,12 +36,13 @@ class DiagnosticsActivity : Activity() {
     private lateinit var scrollView: ScrollView
     private lateinit var ipInputEditText: EditText
 
-    private val logReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == MainActivity.ACTION_LOG_UPDATE) {
-                val logMsg = intent.getStringExtra(MainActivity.EXTRA_LOG_MSG) ?: ""
-                appendLog(logMsg)
-            }
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var displayedLogCount = 0L
+
+    private val logPollingRunnable = object : Runnable {
+        override fun run() {
+            pollBufferLogs()
+            mainHandler.postDelayed(this, 300) // Poll logs every 300ms for real-time smoothness
         }
     }
 
@@ -224,6 +222,7 @@ class DiagnosticsActivity : Activity() {
             setOnClickListener {
                 LogBuffer.clear()
                 consoleTextView.text = "> Console Cleared.\n"
+                displayedLogCount = 0L
             }
         }
         actionRow.addView(btnClear)
@@ -272,24 +271,34 @@ class DiagnosticsActivity : Activity() {
         rootLayout.addView(scrollView)
 
         setContentView(rootLayout)
+    }
 
-        // Load historical logs
-        val savedLogs = LogBuffer.getLogs()
-        for (log in savedLogs) {
-            consoleTextView.append(log + "\n")
-        }
-        if (savedLogs.isEmpty()) {
-            consoleTextView.append("> Initializing diagnostic control center...\n")
-        }
+    override fun onResume() {
+        super.onResume()
+        mainHandler.post(logPollingRunnable)
+    }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(logReceiver, IntentFilter(MainActivity.ACTION_LOG_UPDATE), Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(logReceiver, IntentFilter(MainActivity.ACTION_LOG_UPDATE))
-        }
+    override fun onPause() {
+        super.onPause()
+        mainHandler.removeCallbacks(logPollingRunnable)
+    }
 
-        scrollView.post {
-            scrollView.fullScroll(ScrollView.FOCUS_DOWN)
+    private fun pollBufferLogs() {
+        val nextIndexToFetch = displayedLogCount
+        val totalCount = LogBuffer.totalLogsCount
+        
+        if (totalCount > nextIndexToFetch) {
+            val newLines = LogBuffer.getLogsAfter(nextIndexToFetch)
+            for (line in newLines) {
+                consoleTextView.append(line + "\n")
+            }
+            displayedLogCount = totalCount
+            scrollView.post {
+                scrollView.fullScroll(ScrollView.FOCUS_DOWN)
+            }
+        } else if (totalCount < nextIndexToFetch) {
+            consoleTextView.text = "> Console Cleared.\n"
+            displayedLogCount = 0L
         }
     }
 
@@ -327,17 +336,6 @@ class DiagnosticsActivity : Activity() {
         Toast.makeText(this, "HUD Service Restarted!", Toast.LENGTH_SHORT).show()
     }
 
-    private fun appendLog(msg: String) {
-        val sdf = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
-        val timestamp = sdf.format(Date())
-        runOnUiThread {
-            consoleTextView.append("[$timestamp] $msg\n")
-            scrollView.post {
-                scrollView.fullScroll(ScrollView.FOCUS_DOWN)
-            }
-        }
-    }
-
     private fun exportAndShareLogs() {
         try {
             val allLogs = consoleTextView.text.toString()
@@ -354,34 +352,34 @@ class DiagnosticsActivity : Activity() {
     }
 
     private fun runManualLinkAndArpScan() {
-        appendLog("--- INITIATING MANUAL ARP & LINK SCAN ---")
+        LogBuffer.add("--- INITIATING MANUAL ARP & LINK SCAN ---")
         
         try {
             val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
             val devices = usbManager.deviceList.values
-            appendLog("Connected USB Devices: ${devices.size}")
+            LogBuffer.add("Connected USB Devices: ${devices.size}")
             for (dev in devices) {
-                appendLog(" -> VID:0x${Integer.toHexString(dev.vendorId)} PID:0x${Integer.toHexString(dev.productId)} - Name: ${dev.deviceName}")
+                LogBuffer.add(" -> VID:0x${Integer.toHexString(dev.vendorId)} PID:0x${Integer.toHexString(dev.productId)} - Name: ${dev.deviceName}")
             }
         } catch (e: Exception) {
-            appendLog("USB query error: ${e.message}")
+            LogBuffer.add("USB query error: ${e.message}")
         }
 
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 val networks = cm.allNetworks
-                appendLog("ConnectivityManager Active Networks: ${networks.size}")
+                LogBuffer.add("ConnectivityManager Active Networks: ${networks.size}")
                 for (network in networks) {
                     val props = cm.getLinkProperties(network) ?: continue
                     val iface = props.interfaceName
                     for (route in props.routes) {
-                        appendLog(" -> Link route: iface=$iface dest=${route.destination} gateway=${route.gateway?.hostAddress}")
+                        LogBuffer.add(" -> Link route: iface=$iface dest=${route.destination} gateway=${route.gateway?.hostAddress}")
                     }
                 }
             }
         } catch (e: Exception) {
-            appendLog("ConnectivityManager query error: ${e.message}")
+            LogBuffer.add("ConnectivityManager query error: ${e.message}")
         }
 
         try {
@@ -392,42 +390,42 @@ class DiagnosticsActivity : Activity() {
                 val addresses = netInt.inetAddresses
                 while (addresses.hasMoreElements()) {
                     val addr = addresses.nextElement()
-                    appendLog("Interface [$name]: IP=${addr.hostAddress} Loopback=${addr.isLoopbackAddress}")
+                    LogBuffer.add("Interface [$name]: IP=${addr.hostAddress} Loopback=${addr.isLoopbackAddress}")
                 }
             }
         } catch (e: Exception) {
-            appendLog("Network interfaces query error: ${e.message}")
+            LogBuffer.add("Network interfaces query error: ${e.message}")
         }
 
         try {
             BufferedReader(FileReader("/proc/net/route")).use { reader ->
                 var line: String?
-                appendLog("Routing table entries (/proc/net/route):")
+                LogBuffer.add("Routing table entries (/proc/net/route):")
                 while (reader.readLine().also { line = it } != null) {
-                    appendLog("  $line")
+                    LogBuffer.add("  $line")
                 }
             }
         } catch (e: Exception) {
-            appendLog("Route table read skipped: [SELinux Blocked /proc/net/route]")
+            LogBuffer.add("Route table read skipped: [SELinux Blocked /proc/net/route]")
         }
 
         try {
             BufferedReader(FileReader("/proc/net/arp")).use { reader ->
                 var line: String?
-                appendLog("ARP cache table entries (/proc/net/arp):")
+                LogBuffer.add("ARP cache table entries (/proc/net/arp):")
                 while (reader.readLine().also { line = it } != null) {
-                    appendLog("  $line")
+                    LogBuffer.add("  $line")
                 }
             }
         } catch (e: Exception) {
-            appendLog("ARP table read skipped: [SELinux Blocked /proc/net/arp]")
+            LogBuffer.add("ARP table read skipped: [SELinux Blocked /proc/net/arp]")
         }
 
-        appendLog("--- SCAN COMPLETED ---")
+        LogBuffer.add("--- SCAN COMPLETED ---")
     }
 
     private fun openEthernetSettings() {
-        appendLog("Attempting to open Ethernet settings...")
+        LogBuffer.add("Attempting to open Ethernet settings...")
         val intentsToTry = listOf(
             Intent("android.settings.ETHERNET_SETTINGS"),
             Intent("com.samsung.android.settings.ETHERNET_SETTINGS"),
@@ -439,17 +437,17 @@ class DiagnosticsActivity : Activity() {
             try {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(intent)
-                appendLog("Opened: ${intent.action}")
+                LogBuffer.add("Opened: ${intent.action}")
                 return
             } catch (e: Exception) {
-                appendLog("Intent ${intent.action} failed: ${e.message}")
+                LogBuffer.add("Intent ${intent.action} failed: ${e.message}")
             }
         }
         Toast.makeText(this, "Could not open Ethernet settings", Toast.LENGTH_SHORT).show()
     }
 
     private fun requestGlassesUsbPermissionDirectly() {
-        appendLog("USB: Requesting USB access directly from UI...")
+        LogBuffer.add("USB: Requesting USB access directly from UI...")
         try {
             val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
             val deviceList = usbManager.deviceList.values
@@ -467,21 +465,14 @@ class DiagnosticsActivity : Activity() {
                 }
                 val pi = android.app.PendingIntent.getBroadcast(this, 0, intent, flags)
                 usbManager.requestPermission(match, pi)
-                appendLog("USB: Permission request dialog triggered.")
+                LogBuffer.add("USB: Permission request dialog triggered.")
                 Toast.makeText(this, "USB permission requested!", Toast.LENGTH_SHORT).show()
             } else {
-                appendLog("USB: XREAL Glasses not found on USB bus. Plug them in!")
+                LogBuffer.add("USB: XREAL Glasses not found on USB bus. Plug them in!")
                 Toast.makeText(this, "Plug in glasses first!", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            appendLog("USB: Permission request error: ${e.message}")
+            LogBuffer.add("USB: Permission request error: ${e.message}")
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        try {
-            unregisterReceiver(logReceiver)
-        } catch (e: Exception) {}
     }
 }
