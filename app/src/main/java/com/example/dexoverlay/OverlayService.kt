@@ -371,12 +371,12 @@ class OverlayService : Service() {
 
             if (next) {
                 cursorLayout?.visibility = View.VISIBLE
-                cursorModeLabel?.text = "[ MOUSE MODE: ON ]"
+                cursorModeLabel?.text = "🖱️"
                 cursorModeLabel?.setTextColor(Color.parseColor("#00FF66"))
                 updateCursorAppearance()
                 handler.postDelayed(hideModeLabelRunnable, 2000)
             } else {
-                cursorModeLabel?.text = "[ MOUSE MODE: OFF ]"
+                cursorModeLabel?.text = "❌"
                 cursorModeLabel?.setTextColor(Color.parseColor("#FF0055"))
                 cursorIconView?.text = "❌"
                 cursorIconView?.setTextColor(Color.parseColor("#FF0055"))
