@@ -24,7 +24,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     private val volDownLongPressRunnable = Runnable {
         isVolDownLongPressedTriggered = true
         log("KEY INTERCEPT: Volume Down long press (5s) → toggling mouse mode...")
-        sendBroadcast(Intent(ACTION_TOGGLE_MOUSE_MODE))
+        sendBroadcast(Intent(ACTION_TOGGLE_MOUSE_MODE).apply { setPackage(packageName) })
     }
 
     private val clickReceiver = object : BroadcastReceiver() {
@@ -79,7 +79,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         val targetDisplayId = targetDisplay.displayId
 
         val path = Path().apply { moveTo(x, y) }
-        val duration = if (isRightClick) 1000L else 50L
+        val duration = if (isRightClick) 1000L else 1L // Instant 1ms tap for zero lag
         val stroke = GestureDescription.StrokeDescription(path, 0, duration)
         val gesture = GestureDescription.Builder().apply {
             addStroke(stroke)
@@ -160,8 +160,8 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             if (mouseModeEnabled) {
-                if (action == KeyEvent.ACTION_DOWN) {
-                    log("KEY INTERCEPT: Vol Up DOWN → action: $volUpAction")
+                if (action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                    log("KEY INTERCEPT: Vol Up DOWN → action: $volUpAction (instant)")
                     triggerAction(volUpAction)
                 }
                 return true
@@ -174,15 +174,14 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                 if (event.repeatCount == 0) {
                     isVolDownLongPressedTriggered = false
                     mainHandler.postDelayed(volDownLongPressRunnable, 5000)
-                    log("KEY INTERCEPT: Vol Down DOWN → starting 5s toggle timer...")
+                    if (mouseModeEnabled) {
+                        log("KEY INTERCEPT: Vol Down DOWN → action: $volDownAction (instant)")
+                        triggerAction(volDownAction)
+                    }
                 }
                 if (mouseModeEnabled) return true
             } else if (action == KeyEvent.ACTION_UP) {
                 mainHandler.removeCallbacks(volDownLongPressRunnable)
-                if (!isVolDownLongPressedTriggered && mouseModeEnabled) {
-                    log("KEY INTERCEPT: Vol Down UP → action: $volDownAction")
-                    triggerAction(volDownAction)
-                }
                 val consumed = mouseModeEnabled || isVolDownLongPressedTriggered
                 isVolDownLongPressedTriggered = false
                 if (consumed) return true
@@ -191,8 +190,8 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         }
 
         if (keyCode in intArrayOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER)) {
-            if (mouseModeEnabled && action == KeyEvent.ACTION_DOWN) {
-                log("KEY INTERCEPT: Bluetooth clicker $keyCode → LEFT_CLICK")
+            if (mouseModeEnabled && action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                log("KEY INTERCEPT: Bluetooth clicker $keyCode → LEFT_CLICK (instant)")
                 triggerAction(OverlayService.ACTION_VAL_LEFT_CLICK)
                 return true
             }

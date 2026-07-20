@@ -16,6 +16,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -40,9 +41,19 @@ class OverlayService : Service() {
     private var cursorIconView: TextView? = null
     private var cursorModeLabel: TextView? = null
     private var cursorParams: WindowManager.LayoutParams? = null
-    
+
+    // Screen dimensions (dynamically queried from target display metrics)
+    private var screenWidth = 1920f
+    private var screenHeight = 1080f
+
+    // Cursor Movement & Smoothing
+    private var rawCursorX = 960f
+    private var rawCursorY = 540f
     private var cursorX = 960f
     private var cursorY = 540f
+    private var cursorMeasuredWidth = 60
+    private var cursorMeasuredHeight = 60
+    private var isCursorLoopRunning = false
 
     private var imuManager: XrealOneImuManager? = null
     private var isNavActive = false
@@ -58,6 +69,30 @@ class OverlayService : Service() {
 
     private val hideModeLabelRunnable = Runnable {
         cursorModeLabel?.visibility = View.GONE
+    }
+
+    // 60FPS smooth lerp movement loop
+    private val smoothLoopRunnable = object : Runnable {
+        override fun run() {
+            if (!isCursorLoopRunning) return
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val smoothingFactor = prefs.getFloat(KEY_SMOOTHING_FACTOR, 0.35f).coerceIn(0.05f, 1.0f)
+
+            val dx = rawCursorX - cursorX
+            val dy = rawCursorY - cursorY
+
+            if (Math.abs(dx) > 0.05f || Math.abs(dy) > 0.05f) {
+                cursorX += dx * smoothingFactor
+                cursorY += dy * smoothingFactor
+                updateCursorViewPosition()
+                handler.postDelayed(this, 16) // ~60 FPS
+            } else {
+                cursorX = rawCursorX
+                cursorY = rawCursorY
+                updateCursorViewPosition()
+                isCursorLoopRunning = false
+            }
+        }
     }
 
     // Battery Monitor Receiver
@@ -151,13 +186,11 @@ class OverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         startForegroundServiceNotification()
-        
-        val filterTiramisu = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-        val registerFlag = if (filterTiramisu) RECEIVER_NOT_EXPORTED else 0
+        updateDisplayBounds()
 
         fun register(receiver: BroadcastReceiver, filter: IntentFilter) {
-            if (filterTiramisu) {
-                registerReceiver(receiver, filter, registerFlag)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
             } else {
                 registerReceiver(receiver, filter)
             }
@@ -166,8 +199,6 @@ class OverlayService : Service() {
         register(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         register(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE))
         register(positionReceiver, IntentFilter(ACTION_UPDATE_POSITION))
-        // ACTION_TRIGGER_ACTION comes from HeadCursorAccessibilityService which runs in a
-        // separate process — must be EXPORTED so the cross-process broadcast is delivered.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(actionReceiver, IntentFilter(HeadCursorAccessibilityService.ACTION_TRIGGER_ACTION).apply {
                 addAction(HeadCursorAccessibilityService.ACTION_TOGGLE_MOUSE_MODE)
@@ -183,13 +214,31 @@ class OverlayService : Service() {
         initImuDrivers()
     }
 
+    private fun updateDisplayBounds() {
+        try {
+            val targetDisplay = DeXDisplayHelper.getTargetDisplay(this)
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            targetDisplay.getRealMetrics(metrics)
+            screenWidth = metrics.widthPixels.toFloat()
+            screenHeight = metrics.heightPixels.toFloat()
+            rawCursorX = screenWidth / 2f
+            rawCursorY = screenHeight / 2f
+            cursorX = rawCursorX
+            cursorY = rawCursorY
+            LogBuffer.add("OVERLAY: Target display metrics=${screenWidth.toInt()}x${screenHeight.toInt()}")
+        } catch (e: Exception) {
+            screenWidth = 1920f
+            screenHeight = 1080f
+        }
+    }
+
     private fun setupOverlayWindow() {
         windowManager = DeXDisplayHelper.getDeXWindowManager(this)
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val position = prefs.getString(KEY_POSITION, POS_TOP_RIGHT) ?: POS_TOP_RIGHT
         val hudScale = prefs.getFloat(KEY_SCALE, 1.0f).coerceIn(0.25f, 1.5f)
-        
         val xOffset = prefs.getInt(KEY_X_OFFSET, 40)
         val yOffset = prefs.getInt(KEY_Y_OFFSET, 40)
 
@@ -303,6 +352,17 @@ class OverlayService : Service() {
         }
         container.addView(cursorModeLabel)
 
+        // Track layout dimensions so (cursorX, cursorY) is aligned to the visual CENTER of the crosshair
+        container.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+            val w = right - left
+            val h = bottom - top
+            if (w > 0 && h > 0) {
+                cursorMeasuredWidth = w
+                cursorMeasuredHeight = h
+                updateCursorViewPosition()
+            }
+        }
+
         cursorLayout = container
 
         val params = WindowManager.LayoutParams(
@@ -320,8 +380,8 @@ class OverlayService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = cursorX.toInt()
-            y = cursorY.toInt()
+            x = (cursorX - cursorMeasuredWidth / 2f).toInt()
+            y = (cursorY - cursorMeasuredHeight / 2f).toInt()
         }
         cursorParams = params
 
@@ -332,16 +392,26 @@ class OverlayService : Service() {
         }
     }
 
+    private fun updateCursorViewPosition() {
+        val params = cursorParams ?: return
+        val halfW = cursorMeasuredWidth / 2
+        val halfH = cursorMeasuredHeight / 2
+        params.x = (cursorX - halfW).toInt()
+        params.y = (cursorY - halfH).toInt()
+        try {
+            cursorLayout?.let { v -> windowManager.updateViewLayout(v, params) }
+        } catch (e: Exception) {}
+    }
+
     private fun getCursorIconForCurrentMode(): String {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val mouseModeEnabled = prefs.getBoolean(KEY_MOUSE_MODE_ENABLED, true)
         if (!mouseModeEnabled) return "❌"
-        
-        // Return custom icons based on actions mapped to Volume buttons
+
         val volUp = prefs.getString(KEY_VOL_UP_ACTION, "LEFT_CLICK")
         if (volUp == ACTION_VAL_RECENTER) return "🎯"
         if (volUp == ACTION_VAL_TOGGLE_HUD) return "👁"
-        
+
         return "✛"
     }
 
@@ -394,20 +464,19 @@ class OverlayService : Service() {
                 }, 2000)
             }
         }
-        
+
         sendBroadcast(Intent("com.example.dexoverlay.REFRESH_UI"))
     }
 
     private fun executeAction(actionName: String) {
         handler.post {
-            // Flash color white feedback for action
             cursorIconView?.setTextColor(Color.parseColor("#FFFFFF"))
             handler.postDelayed({ cursorIconView?.setTextColor(getCursorColorForCurrentMode()) }, 150)
 
             when (actionName) {
                 ACTION_VAL_LEFT_CLICK -> {
                     val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
-                        setPackage(packageName)  // required for RECEIVER_NOT_EXPORTED on API 33+
+                        setPackage(packageName)
                         putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
                         putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
                         putExtra(HeadCursorAccessibilityService.EXTRA_IS_RIGHT, false)
@@ -417,7 +486,7 @@ class OverlayService : Service() {
                 }
                 ACTION_VAL_RIGHT_CLICK -> {
                     val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
-                        setPackage(packageName)  // required for RECEIVER_NOT_EXPORTED on API 33+
+                        setPackage(packageName)
                         putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
                         putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
                         putExtra(HeadCursorAccessibilityService.EXTRA_IS_RIGHT, true)
@@ -430,8 +499,11 @@ class OverlayService : Service() {
                     overlayView?.visibility = if (isHudVisible) View.VISIBLE else View.GONE
                 }
                 ACTION_VAL_RECENTER -> {
-                    cursorX = 960f
-                    cursorY = 540f
+                    rawCursorX = screenWidth / 2f
+                    rawCursorY = screenHeight / 2f
+                    cursorX = rawCursorX
+                    cursorY = rawCursorY
+                    updateCursorViewPosition()
                 }
             }
         }
@@ -450,19 +522,16 @@ class OverlayService : Service() {
 
     private fun onHeadMove(deltaX: Float, deltaY: Float) {
         if (deltaX.isNaN() || deltaY.isNaN() || !deltaX.isFinite() || !deltaY.isFinite()) return
-        cursorX = (cursorX + deltaX * 15f).coerceIn(0f, 1920f)
-        cursorY = (cursorY + deltaY * 15f).coerceIn(0f, 1080f)
 
-        cursorParams?.let { params ->
-            params.x = cursorX.toInt()
-            params.y = cursorY.toInt()
-            handler.post {
-                try {
-                    cursorLayout?.let { v -> windowManager.updateViewLayout(v, params) }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val sensitivity = prefs.getFloat(KEY_HEAD_SENSITIVITY, 1.0f).coerceIn(0.2f, 3.0f)
+
+        rawCursorX = (rawCursorX + deltaX * 15f * sensitivity).coerceIn(0f, screenWidth)
+        rawCursorY = (rawCursorY + deltaY * 15f * sensitivity).coerceIn(0f, screenHeight)
+
+        if (!isCursorLoopRunning) {
+            isCursorLoopRunning = true
+            handler.post(smoothLoopRunnable)
         }
     }
 
@@ -495,8 +564,10 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        isCursorLoopRunning = false
         handler.removeCallbacks(clockRunnable)
         handler.removeCallbacks(hideModeLabelRunnable)
+        handler.removeCallbacks(smoothLoopRunnable)
         imuManager?.stop()
         try {
             unregisterReceiver(batteryReceiver)
@@ -528,6 +599,10 @@ class OverlayService : Service() {
         const val KEY_VOL_UP_ACTION = "vol_up_action"
         const val KEY_VOL_DOWN_ACTION = "vol_down_action"
         const val KEY_MOUSE_MODE_ENABLED = "mouse_mode_enabled"
+
+        // Configurable Head Sensitivity & Movement Smoothing
+        const val KEY_HEAD_SENSITIVITY = "head_sensitivity" // 0.2x to 3.0x
+        const val KEY_SMOOTHING_FACTOR  = "head_smoothing"   // 0.05 to 1.0
 
         const val ACTION_VAL_LEFT_CLICK = "LEFT_CLICK"
         const val ACTION_VAL_RIGHT_CLICK = "RIGHT_CLICK"

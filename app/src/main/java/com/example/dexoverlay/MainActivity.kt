@@ -143,6 +143,54 @@ class MainActivity : Activity() {
         root.addView(mapperCard)
         root.addView(gap())
 
+        // ── Card: Head Cursor Tuning (Sensitivity & Smoothing) ────────────────
+        val tuningCard = card("⚡ HEAD CURSOR TUNING (SENSITIVITY & SMOOTHING)", GREEN)
+
+        val currentSens = prefs.getFloat(OverlayService.KEY_HEAD_SENSITIVITY, 1.0f)
+        val sensLabel = label("Head Sensitivity: ${String.format("%.2f", currentSens)}x", YELLOW, 11f)
+        tuningCard.addView(sensLabel)
+
+        val sensSeekBar = SeekBar(this).apply {
+            max = 280 // 0.2x to 3.0x
+            progress = ((currentSens - 0.2f) * 100).toInt()
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
+                    val sens = 0.2f + p / 100f
+                    sensLabel.text = "Head Sensitivity: ${String.format("%.2f", sens)}x"
+                }
+                override fun onStartTrackingTouch(s: SeekBar?) {}
+                override fun onStopTrackingTouch(s: SeekBar?) {
+                    val sens = 0.2f + (s?.progress ?: 80) / 100f
+                    prefs.edit().putFloat(OverlayService.KEY_HEAD_SENSITIVITY, sens).apply()
+                }
+            })
+        }
+        tuningCard.addView(sensSeekBar)
+        tuningCard.addView(gap())
+
+        val currentSmooth = prefs.getFloat(OverlayService.KEY_SMOOTHING_FACTOR, 0.35f)
+        val smoothLabel = label("Movement Smoothing: ${String.format("%.2f", currentSmooth)} (⚡ Fast <-> Smooth 🧈)", YELLOW, 11f)
+        tuningCard.addView(smoothLabel)
+
+        val smoothSeekBar = SeekBar(this).apply {
+            max = 95 // 0.05 to 1.0
+            progress = ((currentSmooth - 0.05f) * 100).toInt()
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
+                    val smooth = 0.05f + p / 100f
+                    smoothLabel.text = "Movement Smoothing: ${String.format("%.2f", smooth)} (⚡ Fast <-> Smooth 🧈)"
+                }
+                override fun onStartTrackingTouch(s: SeekBar?) {}
+                override fun onStopTrackingTouch(s: SeekBar?) {
+                    val smooth = 0.05f + (s?.progress ?: 30) / 100f
+                    prefs.edit().putFloat(OverlayService.KEY_SMOOTHING_FACTOR, smooth).apply()
+                }
+            })
+        }
+        tuningCard.addView(smoothSeekBar)
+        root.addView(tuningCard)
+        root.addView(gap())
+
         // ── Card: HUD Scale & Position ────────────────────────────────────────
         val currentScale = prefs.getFloat(OverlayService.KEY_SCALE, 1.0f)
         val currentPos   = prefs.getString(OverlayService.KEY_POSITION, OverlayService.POS_TOP_RIGHT)
