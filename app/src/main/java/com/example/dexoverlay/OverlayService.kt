@@ -278,6 +278,7 @@ class OverlayService : Service() {
         if (!enableHeadCursor) return
 
         fun onHeadMove(deltaX: Float, deltaY: Float) {
+            if (deltaX.isNaN() || deltaY.isNaN() || !deltaX.isFinite() || !deltaY.isFinite()) return
             cursorX = (cursorX + deltaX * 15f).coerceIn(0f, 1920f)
             cursorY = (cursorY + deltaY * 15f).coerceIn(0f, 1080f)
 

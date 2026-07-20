@@ -214,7 +214,9 @@ class XrealOneImuManager(private val context: Context) {
                                 val gyroX = accumulator.getFloat(startPos + 34)
                                 val gyroY = accumulator.getFloat(startPos + 38)
 
-                                onHeadMoveListener?.invoke(gyroY * 0.5f, -gyroX * 0.5f)
+                                if (!gyroX.isNaN() && !gyroY.isNaN() && gyroX.isFinite() && gyroY.isFinite()) {
+                                    onHeadMoveListener?.invoke(gyroY * 0.5f, -gyroX * 0.5f)
+                                }
 
                                 frameCount++
                                 if (frameCount == 1L || frameCount % 1000 == 0L) {
