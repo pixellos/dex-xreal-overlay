@@ -6,11 +6,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
-import android.graphics.Typeface
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -22,8 +23,38 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.TextView
+
+/**
+ * Standard open crosshair: 4 arms with an empty center gap. No fill, no circle.
+ * Arms: horizontal + vertical lines radiating from a clear center gap.
+ */
+class CrosshairView(context: Context) : View(context) {
+
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#00E5FF")  // neon cyan
+        strokeWidth = 2.5f
+        style = Paint.Style.STROKE
+        setShadowLayer(6f, 0f, 0f, Color.parseColor("#CC00FFFF"))  // cyan glow
+    }
+
+    // crosshair geometry (dp-independent, sized in pixels at draw time)
+    private val gap   = 7f   // empty center radius
+    private val arm   = 16f  // arm length beyond gap
+
+    override fun onDraw(canvas: Canvas) {
+        val cx = width  / 2f
+        val cy = height / 2f
+
+        // horizontal left arm
+        canvas.drawLine(cx - gap - arm, cy, cx - gap, cy, paint)
+        // horizontal right arm
+        canvas.drawLine(cx + gap, cy, cx + gap + arm, cy, paint)
+        // vertical top arm
+        canvas.drawLine(cx, cy - gap - arm, cx, cy - gap, paint)
+        // vertical bottom arm
+        canvas.drawLine(cx, cy + gap, cx, cy + gap + arm, paint)
+    }
+}
 
 class HeadCursorAccessibilityService : AccessibilityService() {
 
@@ -33,10 +64,9 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     // Crosshair Window (TYPE_ACCESSIBILITY_OVERLAY renders ABOVE all system popups, Start Menu & Taskbars)
     private var windowManager: WindowManager? = null
     private var cursorRootFrame: FrameLayout? = null
-    private var cursorLayout: LinearLayout? = null
-    private var cursorIconView: TextView? = null
-    private var cursorMeasuredWidth = 30
-    private var cursorMeasuredHeight = 30
+    private var cursorLayout: FrameLayout? = null
+    private var cursorMeasuredWidth = 48
+    private var cursorMeasuredHeight = 48
 
     // Volume Down hold state
     private var isVolDownHeld = false
@@ -175,42 +205,30 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                 val wm = DeXDisplayHelper.getDeXWindowManager(this)
                 windowManager = wm
 
+                // Root full-screen transparent frame
                 val rootFrame = FrameLayout(this).apply {
                     setBackgroundColor(Color.TRANSPARENT)
                     visibility = View.VISIBLE
                 }
 
-                val container = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.CENTER
+                // Fixed-size container for the crosshair view (48x48 px)
+                val sizePx = 48
+                cursorMeasuredWidth  = sizePx
+                cursorMeasuredHeight = sizePx
+
+                val container = FrameLayout(this).apply {
                     setBackgroundColor(Color.TRANSPARENT)
                 }
 
-                cursorIconView = TextView(this).apply {
-                    text = "⌖"
-                    textSize = 28f
-                    setTextColor(Color.parseColor("#00E5FF"))
-                    typeface = Typeface.DEFAULT_BOLD
-                    setShadowLayer(8f, 0f, 0f, Color.parseColor("#00FFFF"))
-                    gravity = Gravity.CENTER
-                }
-                container.addView(cursorIconView)
+                val crosshair = CrosshairView(this)
+                // Enable software layer so setShadowLayer works on canvas draws
+                crosshair.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
 
-                cursorMeasuredWidth = 40
-                cursorMeasuredHeight = 40
-
-                container.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
-                    val w = right - left
-                    val h = bottom - top
-                    if (w > 0 && h > 0) {
-                        cursorMeasuredWidth = w
-                        cursorMeasuredHeight = h
-                    }
-                }
+                val cvParams = FrameLayout.LayoutParams(sizePx, sizePx)
+                container.addView(crosshair, cvParams)
 
                 val childParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT
+                    sizePx, sizePx
                 ).apply {
                     gravity = Gravity.TOP or Gravity.START
                 }
@@ -235,9 +253,9 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
                 wm.addView(cursorRootFrame, params)
                 updateCursorPosition(960f, 540f)
-                log("ACCESSIBILITY: Bright 28f Neon Cyan Crosshair Overlay created with TYPE_ACCESSIBILITY_OVERLAY")
+                log("ACCESSIBILITY: Open-center crosshair overlay created (48x48 px, 4-arm standard X)")
             } catch (e: Exception) {
-                log("ACCESSIBILITY: Error setting up accessibility crosshair overlay: ${e.message}")
+                log("ACCESSIBILITY: Error setting up crosshair overlay: ${e.message}")
             }
         }
     }
@@ -245,15 +263,15 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     /** Direct 0ms in-process hardware-accelerated GPU translation update. */
     fun updateCursorPosition(x: Float, y: Float) {
         val view = cursorLayout ?: return
-        val halfW = if (cursorMeasuredWidth > 0) cursorMeasuredWidth / 2f else 15f
-        val halfH = if (cursorMeasuredHeight > 0) cursorMeasuredHeight / 2f else 15f
+        val halfW = cursorMeasuredWidth / 2f
+        val halfH = cursorMeasuredHeight / 2f
         view.translationX = x - halfW
         view.translationY = y - halfH
     }
 
     fun setCursorVisible(visible: Boolean) {
         mainHandler.post {
-            cursorRootFrame?.visibility = if (visible) View.VISIBLE else View.GONE
+            cursorRootFrame?.visibility = if (visible) View.VISIBLE else View.INVISIBLE
         }
     }
 
