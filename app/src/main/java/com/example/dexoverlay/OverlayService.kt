@@ -30,9 +30,6 @@ import java.util.Locale
 
 /**
  * Industry-standard 1€ (One Euro) Filter for adaptive head-tracking jitter suppression.
- * Dynamically adjusts cutoff frequency based on movement speed:
- * - At low speed: Low cutoff frequency to completely eliminate micro-jitter & tremor.
- * - At high speed: High cutoff frequency for zero-latency instant response.
  */
 class OneEuroFilter(
     var minCutoff: Float = 1.2f,   // Cutoff frequency at rest (Hz) — lower = smoother/zero jitter
@@ -90,7 +87,7 @@ class OverlayService : Service() {
     private var navTraceTextView: TextView? = null
     private var windowLayoutParams: WindowManager.LayoutParams? = null
 
-    // Cursor Components
+    // Cursor Components (Fallback Window)
     private var cursorRootFrame: FrameLayout? = null
     private var cursorLayout: LinearLayout? = null
     private var cursorIconView: TextView? = null
@@ -264,7 +261,12 @@ class OverlayService : Service() {
         }
 
         setupOverlayWindow()
-        setupHeadTrackedCursor()
+        
+        // Setup accessibility top-most TYPE_ACCESSIBILITY_OVERLAY window if service is connected
+        HeadCursorAccessibilityService.instance?.setupCrosshairOverlay()
+        if (HeadCursorAccessibilityService.instance == null) {
+            setupHeadTrackedCursor()
+        }
         initImuDrivers()
     }
 
@@ -460,7 +462,7 @@ class OverlayService : Service() {
         }
     }
 
-    /** Ultra-fast GPU hardware-accelerated translation update across 100% full screen area. */
+    /** Fast GPU hardware-accelerated translation update across 100% full screen area. */
     private fun updateCursorViewPosition() {
         val view = cursorLayout ?: return
         val halfW = if (cursorMeasuredWidth > 0) cursorMeasuredWidth / 2f else 15f
@@ -501,6 +503,8 @@ class OverlayService : Service() {
         handler.post {
             cursorModeLabel?.visibility = View.VISIBLE
             handler.removeCallbacks(hideModeLabelRunnable)
+
+            HeadCursorAccessibilityService.instance?.setCursorVisible(next)
 
             if (next) {
                 cursorRootFrame?.visibility = View.VISIBLE
@@ -597,7 +601,13 @@ class OverlayService : Service() {
         cursorX = filterX.filter(rawCursorX, now)
         cursorY = filterY.filter(rawCursorY, now)
 
-        updateCursorViewPosition()
+        // Update top-most TYPE_ACCESSIBILITY_OVERLAY crosshair via AccessibilityService (0ms in-process)
+        val accService = HeadCursorAccessibilityService.instance
+        if (accService != null) {
+            accService.updateCursorPosition(cursorX, cursorY)
+        } else {
+            updateCursorViewPosition()
+        }
 
         if (isDragModeActive) {
             val dragIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_DRAG).apply {

@@ -6,20 +6,37 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Color
 import android.graphics.Path
+import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Gravity
 import android.view.KeyEvent
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 
 class HeadCursorAccessibilityService : AccessibilityService() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var lastClickTimestamp: Long = 0L
+
+    // Crosshair Window (TYPE_ACCESSIBILITY_OVERLAY renders ABOVE all system popups, Start Menu & Taskbars)
+    private var windowManager: WindowManager? = null
+    private var cursorRootFrame: FrameLayout? = null
+    private var cursorLayout: LinearLayout? = null
+    private var cursorIconView: TextView? = null
+    private var cursorMeasuredWidth = 30
+    private var cursorMeasuredHeight = 30
 
     // Volume Down hold state
     private var isVolDownHeld = false
@@ -106,6 +123,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         val filter = IntentFilter().apply {
             addAction(ACTION_PERFORM_CLICK)
             addAction(ACTION_PERFORM_SCROLL)
@@ -124,13 +142,107 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
+        setupCrosshairOverlay()
         log("HeadCursorAccessibilityService connected and ready.")
+    }
+
+    fun setupCrosshairOverlay() {
+        if (cursorRootFrame != null) return
+        mainHandler.post {
+            try {
+                val wm = DeXDisplayHelper.getDeXWindowManager(this)
+                windowManager = wm
+
+                val prefs = getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
+                val mouseModeEnabled = prefs.getBoolean(OverlayService.KEY_MOUSE_MODE_ENABLED, true)
+
+                val rootFrame = FrameLayout(this).apply {
+                    setBackgroundColor(Color.TRANSPARENT)
+                    visibility = if (mouseModeEnabled) View.VISIBLE else View.GONE
+                }
+
+                val container = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    setBackgroundColor(Color.TRANSPARENT)
+                }
+
+                cursorIconView = TextView(this).apply {
+                    text = "⌖"
+                    textSize = 14f
+                    setTextColor(Color.parseColor("#00E5FF"))
+                    setShadowLayer(4f, 0f, 0f, Color.parseColor("#00E5FF"))
+                    gravity = Gravity.CENTER
+                }
+                container.addView(cursorIconView)
+
+                container.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+                    val w = right - left
+                    val h = bottom - top
+                    if (w > 0 && h > 0) {
+                        cursorMeasuredWidth = w
+                        cursorMeasuredHeight = h
+                    }
+                }
+
+                val childParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.TOP or Gravity.START
+                }
+                rootFrame.addView(container, childParams)
+
+                cursorLayout = container
+                cursorRootFrame = rootFrame
+
+                // TYPE_ACCESSIBILITY_OVERLAY sits at the absolute top z-index, rendering ABOVE system popups, Start Menu & Taskbars
+                val params = WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                    PixelFormat.TRANSLUCENT
+                ).apply {
+                    gravity = Gravity.TOP or Gravity.START
+                    x = 0
+                    y = 0
+                }
+
+                wm.addView(cursorRootFrame, params)
+                log("ACCESSIBILITY: Top-most crosshair overlay created with TYPE_ACCESSIBILITY_OVERLAY")
+            } catch (e: Exception) {
+                log("ACCESSIBILITY: Error setting up accessibility crosshair overlay: ${e.message}")
+            }
+        }
+    }
+
+    /** Direct 0ms in-process hardware-accelerated GPU translation update. */
+    fun updateCursorPosition(x: Float, y: Float) {
+        val view = cursorLayout ?: return
+        val halfW = if (cursorMeasuredWidth > 0) cursorMeasuredWidth / 2f else 15f
+        val halfH = if (cursorMeasuredHeight > 0) cursorMeasuredHeight / 2f else 15f
+        view.translationX = x - halfW
+        view.translationY = y - halfH
+    }
+
+    fun setCursorVisible(visible: Boolean) {
+        mainHandler.post {
+            cursorRootFrame?.visibility = if (visible) View.VISIBLE else View.GONE
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        instance = null
         try { unregisterReceiver(clickReceiver) } catch (e: Exception) {}
         mainHandler.removeCallbacks(volDownLongPressRunnable)
+        if (cursorRootFrame != null && windowManager != null) {
+            try { windowManager?.removeView(cursorRootFrame) } catch (e: Exception) {}
+        }
         log("HeadCursorAccessibilityService destroyed.")
     }
 
@@ -357,6 +469,8 @@ class HeadCursorAccessibilityService : AccessibilityService() {
     }
 
     companion object {
+        @Volatile var instance: HeadCursorAccessibilityService? = null
+
         const val ACTION_PERFORM_CLICK  = "com.example.dexoverlay.PERFORM_CLICK"
         const val ACTION_PERFORM_SCROLL = "com.example.dexoverlay.PERFORM_SCROLL"
         const val ACTION_PERFORM_DRAG   = "com.example.dexoverlay.PERFORM_DRAG"
