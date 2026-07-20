@@ -7,6 +7,9 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbManager
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.os.Build
 import android.util.Log
 import java.io.BufferedReader
 import java.io.FileReader
@@ -204,7 +207,30 @@ class XrealOneImuManager(private val context: Context) {
 
         var targetIp = "169.254.2.1" // Default fallback
 
-        // 1. Scan ARP Cache (/proc/net/arp)
+        // 1. Android ConnectivityManager API (SELinux Compliant)
+        try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val networks = cm.allNetworks
+                for (network in networks) {
+                    val linkProps = cm.getLinkProperties(network) ?: continue
+                    val ifaceName = linkProps.interfaceName?.lowercase() ?: continue
+                    if (ifaceName.contains("usb") || ifaceName.contains("rndis") || ifaceName.contains("eth") || ifaceName.contains("cdc")) {
+                        for (route in linkProps.routes) {
+                            val gateway = route.gateway?.hostAddress
+                            if (gateway != null && gateway != "0.0.0.0") {
+                                log("Android LinkProperties: found gateway $gateway on interface $ifaceName")
+                                return gateway
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            log("Android ConnectivityManager query skipped: ${e.message}")
+        }
+
+        // 2. Scan ARP Cache (/proc/net/arp)
         try {
             BufferedReader(FileReader("/proc/net/arp")).use { reader ->
                 var line: String?
@@ -224,10 +250,10 @@ class XrealOneImuManager(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            log("ARP Table read skipped: ${e.message}")
+            // Silently skip SELinux sandboxing blocks
         }
 
-        // 2. Scan Routing Table (/proc/net/route) to find default gateway on USB interface
+        // 3. Scan Routing Table (/proc/net/route)
         try {
             BufferedReader(FileReader("/proc/net/route")).use { reader ->
                 var line: String?
@@ -240,7 +266,6 @@ class XrealOneImuManager(private val context: Context) {
                         if (iface.contains("usb") || iface.contains("rndis") || iface.contains("eth") || iface.contains("cdc")) {
                             val gatewayHex = tokens[2]
                             if (gatewayHex != "00000000") {
-                                // Parse little-endian hex to IP
                                 val valHex = gatewayHex.toLong(16)
                                 val ip = "${valHex and 0xFF}.${(valHex shr 8) and 0xFF}.${(valHex shr 16) and 0xFF}.${(valHex shr 24) and 0xFF}"
                                 log("Routing Table Match: found gateway $ip on interface $iface")
@@ -252,10 +277,10 @@ class XrealOneImuManager(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            log("Routing Table read skipped: ${e.message}")
+            // Silently skip SELinux sandboxing blocks
         }
 
-        // 3. Fallback: Parse active interfaces to find local subnet and guess gateway
+        // 4. Java NetworkInterface scanning fallback (SELinux Compliant)
         try {
             val interfaces = NetworkInterface.getNetworkInterfaces()
             while (interfaces.hasMoreElements()) {
@@ -267,12 +292,11 @@ class XrealOneImuManager(private val context: Context) {
                         val addr = addrs.nextElement()
                         if (!addr.isLoopbackAddress && addr.hostAddress.indexOf(':') < 0) {
                             val host = addr.hostAddress
-                            log("Interface scanning fallback: found local address $host on interface $name")
-                            // Guess gateway is .1 of the subnet (e.g. 192.168.42.129 -> 192.168.42.1)
+                            log("Java NetworkInterface: found address $host on interface $name")
                             val parts = host.split(".")
                             if (parts.size == 4) {
                                 targetIp = "${parts[0]}.${parts[1]}.${parts[2]}.1"
-                                log("Guessed gateway address: $targetIp")
+                                log("Guessed peer host: $targetIp")
                                 return targetIp
                             }
                         }
@@ -280,10 +304,10 @@ class XrealOneImuManager(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            log("Interface scanning skipped: ${e.message}")
+            log("Java NetworkInterface scanning skipped: ${e.message}")
         }
 
-        log("Using target host: $targetIp")
+        log("Using target host fallback: $targetIp")
         return targetIp
     }
 

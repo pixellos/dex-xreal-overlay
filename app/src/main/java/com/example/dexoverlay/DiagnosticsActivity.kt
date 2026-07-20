@@ -9,6 +9,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.hardware.usb.UsbManager
+import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.os.Build
 import android.os.Bundle
 import android.text.InputType
@@ -325,6 +327,24 @@ class DiagnosticsActivity : Activity() {
             appendLog("USB query error: ${e.message}")
         }
 
+        // Log ConnectivityManager Gateways (SELinux Compliant)
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val networks = cm.allNetworks
+                appendLog("ConnectivityManager Active Networks: ${networks.size}")
+                for (network in networks) {
+                    val props = cm.getLinkProperties(network) ?: continue
+                    val iface = props.interfaceName
+                    for (route in props.routes) {
+                        appendLog(" -> Link route: iface=$iface dest=${route.destination} gateway=${route.gateway?.hostAddress}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            appendLog("ConnectivityManager query error: ${e.message}")
+        }
+
         // Log active network interfaces and addresses
         try {
             val interfaces = NetworkInterface.getNetworkInterfaces()
@@ -351,7 +371,7 @@ class DiagnosticsActivity : Activity() {
                 }
             }
         } catch (e: Exception) {
-            appendLog("Route table read skipped: ${e.message}")
+            appendLog("Route table read skipped: [SELinux Blocked /proc/net/route]")
         }
 
         // Log ARP entries
@@ -364,7 +384,7 @@ class DiagnosticsActivity : Activity() {
                 }
             }
         } catch (e: Exception) {
-            appendLog("ARP table read skipped: ${e.message}")
+            appendLog("ARP table read skipped: [SELinux Blocked /proc/net/arp]")
         }
 
         appendLog("--- SCAN COMPLETED ---")
