@@ -156,6 +156,10 @@ class XrealOneImuManager(private val context: Context) {
                 if (!isRunning) break
                 try {
                     val s = Socket()
+                    
+                    // Route socket specifically to the USB network card interface (SELinux compliant)
+                    bindSocketToUsbNetworkIfPossible(s)
+
                     s.connect(InetSocketAddress(host, 52998), 1000)
                     s.soTimeout = 2000
                     connectedSocket = s
@@ -211,6 +215,26 @@ class XrealOneImuManager(private val context: Context) {
                 log("Re-scanning and retrying TCP stream in 3s...")
                 try { Thread.sleep(3000) } catch (ie: Exception) {}
             }
+        }
+    }
+
+    private fun bindSocketToUsbNetworkIfPossible(socket: Socket) {
+        try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val networks = cm.allNetworks
+                for (network in networks) {
+                    val linkProps = cm.getLinkProperties(network) ?: continue
+                    val ifaceName = linkProps.interfaceName?.lowercase() ?: continue
+                    if (ifaceName.contains("usb") || ifaceName.contains("rndis") || ifaceName.contains("eth") || ifaceName.contains("cdc")) {
+                        log("Routing: Binding TCP socket to interface [$ifaceName]")
+                        network.bindSocket(socket)
+                        return
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            log("Network socket binding failed: ${e.message}")
         }
     }
 
