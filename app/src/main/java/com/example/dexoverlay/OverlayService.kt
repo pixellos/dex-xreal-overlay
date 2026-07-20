@@ -166,9 +166,17 @@ class OverlayService : Service() {
         register(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         register(navReceiver, IntentFilter(MapsNavListenerService.ACTION_NAV_UPDATE))
         register(positionReceiver, IntentFilter(ACTION_UPDATE_POSITION))
-        register(actionReceiver, IntentFilter(HeadCursorAccessibilityService.ACTION_TRIGGER_ACTION).apply {
-            addAction(HeadCursorAccessibilityService.ACTION_TOGGLE_MOUSE_MODE)
-        })
+        // ACTION_TRIGGER_ACTION comes from HeadCursorAccessibilityService which runs in a
+        // separate process — must be EXPORTED so the cross-process broadcast is delivered.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(actionReceiver, IntentFilter(HeadCursorAccessibilityService.ACTION_TRIGGER_ACTION).apply {
+                addAction(HeadCursorAccessibilityService.ACTION_TOGGLE_MOUSE_MODE)
+            }, RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(actionReceiver, IntentFilter(HeadCursorAccessibilityService.ACTION_TRIGGER_ACTION).apply {
+                addAction(HeadCursorAccessibilityService.ACTION_TOGGLE_MOUSE_MODE)
+            })
+        }
 
         setupOverlayWindow()
         setupHeadTrackedCursor()
@@ -399,18 +407,22 @@ class OverlayService : Service() {
             when (actionName) {
                 ACTION_VAL_LEFT_CLICK -> {
                     val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
+                        setPackage(packageName)  // required for RECEIVER_NOT_EXPORTED on API 33+
                         putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
                         putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
                         putExtra(HeadCursorAccessibilityService.EXTRA_IS_RIGHT, false)
                     }
+                    LogBuffer.add("OVERLAY: Dispatching LEFT_CLICK broadcast at ($cursorX, $cursorY)")
                     sendBroadcast(clickIntent)
                 }
                 ACTION_VAL_RIGHT_CLICK -> {
                     val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
+                        setPackage(packageName)  // required for RECEIVER_NOT_EXPORTED on API 33+
                         putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
                         putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
                         putExtra(HeadCursorAccessibilityService.EXTRA_IS_RIGHT, true)
                     }
+                    LogBuffer.add("OVERLAY: Dispatching RIGHT_CLICK broadcast at ($cursorX, $cursorY)")
                     sendBroadcast(clickIntent)
                 }
                 ACTION_VAL_TOGGLE_HUD -> {

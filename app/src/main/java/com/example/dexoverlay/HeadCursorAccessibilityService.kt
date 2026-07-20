@@ -52,7 +52,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         super.onCreate()
         val filter = IntentFilter(ACTION_PERFORM_CLICK)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(clickReceiver, filter, RECEIVER_NOT_EXPORTED)
+            registerReceiver(clickReceiver, filter, RECEIVER_EXPORTED)
         } else {
             registerReceiver(clickReceiver, filter)
         }
@@ -203,6 +203,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
     private fun triggerAction(actionName: String) {
         sendBroadcast(Intent(ACTION_TRIGGER_ACTION).apply {
+            setPackage(packageName)  // required for RECEIVER_NOT_EXPORTED on API 33+
             putExtra(EXTRA_ACTION_NAME, actionName)
         })
     }
