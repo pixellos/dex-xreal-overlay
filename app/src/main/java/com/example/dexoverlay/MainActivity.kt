@@ -17,6 +17,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
@@ -29,12 +30,13 @@ import android.widget.Toast
 
 class MainActivity : Activity() {
 
-    // ── Cyberpunk palette ─────────────────────────────────────────────────────
+    // ── Cyberpunk / Banana Palette ────────────────────────────────────────────
     companion object {
         const val BG        = "#000000"
         const val BG_CARD   = "#0A0A0A"
         const val GREEN     = "#00FF66"
         const val YELLOW    = "#FFE600"
+        const val CYAN      = "#00E5FF"
         const val RED       = "#FF0055"
         const val DIM       = "#1A1A1A"
 
@@ -45,6 +47,18 @@ class MainActivity : Activity() {
     private lateinit var statusTag: TextView
     private lateinit var btnPermissionStatus: Button
     private lateinit var cbMouseMode: CheckBox
+
+    // Tab view containers
+    private lateinit var tabHudContent: LinearLayout
+    private lateinit var tabHeadMouseContent: LinearLayout
+    private lateinit var tabDiagnoseContent: LinearLayout
+
+    // Tab selection buttons
+    private lateinit var btnTabHud: Button
+    private lateinit var btnTabHeadMouse: Button
+    private lateinit var btnTabDiagnose: Button
+
+    private var activeTab = 0 // 0 = HUD, 1 = HEAD MOUSE, 2 = DIAGNOSE
 
     private val refreshUiReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -64,175 +78,73 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(28, 20, 28, 28)
+            setPadding(24, 18, 24, 24)
             setBackgroundColor(Color.parseColor(BG))
         }
 
         // ── Header ────────────────────────────────────────────────────────────
         val header = row().apply {
-            background = border(GREEN, 2)
+            background = border(YELLOW, 2)
             setPadding(16, 12, 16, 12)
         }
-        header.addView(label("CYBERDECK v556 // HUD OS", YELLOW, 14f, bold = true, weight = 1f))
+        header.addView(label("🍌 CYBERDECK // BANANA OS", YELLOW, 14f, bold = true, weight = 1f))
         statusTag = label("[ PENDING ]", RED, 10f)
         header.addView(statusTag)
         root.addView(header)
         root.addView(gap())
 
-        // ── Card: Permissions ─────────────────────────────────────────────────
-        val accessCard = card("⚡ UPFRONT SYSTEM ACCESS STATUS", GREEN)
-        btnPermissionStatus = btn("🔄 SCAN & ACQUIRE ALL REQUIRED PERMISSIONS", GREEN) {
-            checkAndRequestAllPermissions(forceTrigger = true)
+        // ── Banana 3-Tab Selector Bar ──────────────────────────────────────────
+        val tabNav = row().apply {
+            gravity = Gravity.CENTER
+            setPadding(0, 4, 0, 8)
         }
-        accessCard.addView(btnPermissionStatus)
-        root.addView(accessCard)
-        root.addView(gap())
 
-        // ── Card: Diagnostics ─────────────────────────────────────────────────
-        val devCard = card("👓 XREAL 1s DIAGNOSTICS & CONTROLS", GREEN)
-        devCard.addView(btn("🔎 OPEN FULL DIAGNOSTICS & SYSTEM LOGS", GREEN) {
-            startActivity(Intent(this, DiagnosticsActivity::class.java))
-        })
-        root.addView(devCard)
-        root.addView(gap())
-
-        // ── Card: Volume Buttons Action Mapper ────────────────────────────────
-        val mapperCard = card("🕹️ VOLUME BUTTONS ACTION MAPPER", YELLOW)
-
-        cbMouseMode = CheckBox(this).apply {
-            text = "  Enable Head Cursor (Mouse Mode)"
-            setTextColor(Color.WHITE)
+        btnTabHud = Button(this).apply {
+            text = "🖥️ HUD"
             typeface = Typeface.MONOSPACE
-            textSize = 12f
-            isChecked = prefs.getBoolean(OverlayService.KEY_MOUSE_MODE_ENABLED, true)
-            setOnCheckedChangeListener { v, checked ->
-                if (v.isPressed) {
-                    prefs.edit().putBoolean(OverlayService.KEY_MOUSE_MODE_ENABLED, checked).apply()
-                    restartOverlay()
-                }
-            }
+            setTypeface(typeface, Typeface.BOLD)
+            textSize = 11f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, 4, 0) }
+            setOnClickListener { switchTab(0) }
         }
-        mapperCard.addView(cbMouseMode)
-        mapperCard.addView(gap())
 
-        val pressActions = listOf(
-            OverlayService.ACTION_VAL_LEFT_CLICK  to "Execute Left Click",
-            OverlayService.ACTION_VAL_RIGHT_CLICK to "Execute Right Click"
-        )
-
-        mapperCard.addView(label("Volume Up Press Action:", YELLOW, 11f))
-        val rgUp = radioGroup(pressActions,
-            prefs.getString(OverlayService.KEY_VOL_UP_ACTION, OverlayService.ACTION_VAL_LEFT_CLICK) ?: "") { chosen ->
-            prefs.edit().putString(OverlayService.KEY_VOL_UP_ACTION, chosen).apply()
-            restartOverlay()
+        btnTabHeadMouse = Button(this).apply {
+            text = "🎮 HEAD MOUSE"
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
+            textSize = 11f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(2, 0, 2, 0) }
+            setOnClickListener { switchTab(1) }
         }
-        mapperCard.addView(rgUp)
-        mapperCard.addView(gap())
 
-        mapperCard.addView(label("Volume Down Press Action:", YELLOW, 11f))
-        val rgDown = radioGroup(pressActions,
-            prefs.getString(OverlayService.KEY_VOL_DOWN_ACTION, OverlayService.ACTION_VAL_RIGHT_CLICK) ?: "") { chosen ->
-            prefs.edit().putString(OverlayService.KEY_VOL_DOWN_ACTION, chosen).apply()
-            restartOverlay()
+        btnTabDiagnose = Button(this).apply {
+            text = "🔍 DIAGNOSE"
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
+            textSize = 11f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(4, 0, 0, 0) }
+            setOnClickListener { switchTab(2) }
         }
-        mapperCard.addView(rgDown)
-        mapperCard.addView(gap())
 
-        val holdActions = listOf(
-            OverlayService.ACTION_VAL_SCROLL to "Vertical Head Scroll (Hold + Tilt Head)",
-            OverlayService.ACTION_VAL_NONE   to "None (disabled)"
-        )
-        mapperCard.addView(label("Volume Down Hold Action:", YELLOW, 11f))
-        val rgHold = radioGroup(holdActions,
-            prefs.getString(OverlayService.KEY_VOL_DOWN_HOLD_ACTION, OverlayService.ACTION_VAL_SCROLL) ?: "") { chosen ->
-            prefs.edit().putString(OverlayService.KEY_VOL_DOWN_HOLD_ACTION, chosen).apply()
-            restartOverlay()
-        }
-        mapperCard.addView(rgHold)
-        mapperCard.addView(gap())
-
-        val tripleActions = listOf(
-            OverlayService.ACTION_VAL_HOME to "Send HOME Key (Desktop / Home Screen)",
-            OverlayService.ACTION_VAL_NONE to "None (disabled)"
-        )
-        mapperCard.addView(label("Volume Down Triple-Click Action:", YELLOW, 11f))
-        val rgTriple = radioGroup(tripleActions,
-            prefs.getString(OverlayService.KEY_VOL_DOWN_TRIPLE_ACTION, OverlayService.ACTION_VAL_HOME) ?: "") { chosen ->
-            prefs.edit().putString(OverlayService.KEY_VOL_DOWN_TRIPLE_ACTION, chosen).apply()
-            restartOverlay()
-        }
-        mapperCard.addView(rgTriple)
-        mapperCard.addView(gap())
-
-        val quadActions = listOf(
-            OverlayService.ACTION_VAL_TOGGLE_MOUSE to "Toggle Head Cursor ON/OFF (Crosshair Toggle)",
-            OverlayService.ACTION_VAL_NONE         to "None (disabled)"
-        )
-        mapperCard.addView(label("Volume Down Quadruple-Click Action:", YELLOW, 11f))
-        val rgQuad = radioGroup(quadActions,
-            prefs.getString(OverlayService.KEY_VOL_DOWN_QUAD_ACTION, OverlayService.ACTION_VAL_TOGGLE_MOUSE) ?: "") { chosen ->
-            prefs.edit().putString(OverlayService.KEY_VOL_DOWN_QUAD_ACTION, chosen).apply()
-            restartOverlay()
-        }
-        mapperCard.addView(rgQuad)
-
-        root.addView(mapperCard)
+        tabNav.addView(btnTabHud)
+        tabNav.addView(btnTabHeadMouse)
+        tabNav.addView(btnTabDiagnose)
+        root.addView(tabNav)
         root.addView(gap())
 
-        // ── Card: Head Movement Strategy ───────────────────────────
-        val strategyCard = card("🎮 HEAD MOVEMENT STRATEGY", GREEN)
-
-        val strategies = listOf(
-            OverlayService.STRATEGY_LINEAR     to "Linear (Direct 1:1)",
-            OverlayService.STRATEGY_LOG        to "Logarithmic (Micro-Precision & Fast Sweep)",
-            OverlayService.STRATEGY_NLOG       to "Negative Log (Exponential Power Curve)",
-            OverlayService.STRATEGY_FILTERED   to "Filtered (1€ Adaptive Low-Pass Jitter Filter)",
-            OverlayService.STRATEGY_DERIVATIVE to "Derivative (Velocity Acceleration Gain)"
-        )
-        val currentStrategy = prefs.getString(OverlayService.KEY_MOVEMENT_STRATEGY, OverlayService.STRATEGY_LINEAR)
-            ?: OverlayService.STRATEGY_LINEAR
-        val rgStrategy = radioGroup(strategies, currentStrategy) { chosen ->
-            prefs.edit().putString(OverlayService.KEY_MOVEMENT_STRATEGY, chosen).apply()
-            restartOverlay()
+        // ══════════════════════════════════════════════════════════════════════
+        // ── TAB 0: HUD CONTENT ────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        tabHudContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
         }
-        strategyCard.addView(rgStrategy)
-        root.addView(strategyCard)
-        root.addView(gap())
 
-        // ── Card: Direct Head Sensitivity ────────────────────────────
-        val tuningCard = card("⚡ HEAD CURSOR SENSITIVITY", GREEN)
-
-        val currentSens = prefs.getFloat(OverlayService.KEY_HEAD_SENSITIVITY, 0.45f)
-        val sensLabel = label("Head Sensitivity: ${String.format("%.2f", currentSens)}x", YELLOW, 11f)
-        tuningCard.addView(sensLabel)
-
-        val sensSeekBar = SeekBar(this).apply {
-            max = 100
-            progress = (((currentSens - 0.1f) / (4.0f - 0.1f)) * 100).toInt().coerceIn(0, 100)
-
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
-                    val sensCalc = 0.1f + (p / 100.0f) * (4.0f - 0.1f)
-                    sensLabel.text = "Head Sensitivity: ${String.format("%.2f", sensCalc)}x"
-                }
-                override fun onStartTrackingTouch(s: SeekBar?) {}
-                override fun onStopTrackingTouch(s: SeekBar?) {
-                    val p = s?.progress ?: 50
-                    val sensCalc = 0.1f + (p / 100.0f) * (4.0f - 0.1f)
-                    prefs.edit().putFloat(OverlayService.KEY_HEAD_SENSITIVITY, sensCalc).apply()
-                }
-            })
-        }
-        tuningCard.addView(sensSeekBar)
-        root.addView(tuningCard)
-        root.addView(gap())
-
-        // ── Card: HUD Scale & Position ────────────────────────────────────────
+        // Card: HUD Scale & Position
         val currentScale = prefs.getFloat(OverlayService.KEY_SCALE, 1.0f)
         val currentPos   = prefs.getString(OverlayService.KEY_POSITION, OverlayService.POS_TOP_RIGHT)
 
         val configCard = card("🎯 HUD SCALE & CORNER POSITION", YELLOW)
-
         val scaleLabel = label("HUD Scale: ${String.format("%.2f", currentScale)}x", GREEN, 11f)
         configCard.addView(scaleLabel)
 
@@ -270,10 +182,10 @@ class MainActivity : Activity() {
             }
         }
         configCard.addView(posGroup)
-        root.addView(configCard)
-        root.addView(gap())
+        tabHudContent.addView(configCard)
+        tabHudContent.addView(gap())
 
-        // ── Card: Alignment ───────────────────────────────────────────────────
+        // Card: Alignment Calibrator
         val alignCard = card("📍 HUD ALIGNMENT CALIBRATOR", YELLOW)
         val offsetLabel = label(
             "Offset: X=${prefs.getInt(OverlayService.KEY_X_OFFSET, 40)}, Y=${prefs.getInt(OverlayService.KEY_Y_OFFSET, 40)}",
@@ -302,12 +214,155 @@ class MainActivity : Activity() {
             offsetLabel.text = "Offset: X=40, Y=40"
             sendBroadcast(Intent(OverlayService.ACTION_UPDATE_POSITION).apply { setPackage(packageName) })
         })
-        root.addView(alignCard)
-        root.addView(gap())
+        tabHudContent.addView(alignCard)
+        tabHudContent.addView(gap())
 
-        // ── Action Buttons ────────────────────────────────────────────────────
-        root.addView(btn("⚡ START CYBERPUNK HUD", YELLOW, textBlack = true) { startOverlayService() })
-        root.addView(btn("⏹  STOP CYBERPUNK HUD", RED) { stopOverlayService() })
+        // HUD Action Buttons
+        tabHudContent.addView(btn("⚡ START CYBERPUNK HUD", YELLOW, textBlack = true) { startOverlayService() })
+        tabHudContent.addView(btn("⏹  STOP CYBERPUNK HUD", RED) { stopOverlayService() })
+        root.addView(tabHudContent)
+
+        // ══════════════════════════════════════════════════════════════════════
+        // ── TAB 1: HEAD MOUSE CONTENT ─────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        tabHeadMouseContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            visibility = View.GONE
+        }
+
+        // Card: Enable Head Cursor CheckBox
+        val mouseToggleCard = card("🖱️ HEAD MOUSE CONTROLS", CYAN)
+        cbMouseMode = CheckBox(this).apply {
+            text = "  Enable Head Cursor (Mouse Mode)"
+            setTextColor(Color.WHITE)
+            typeface = Typeface.MONOSPACE
+            textSize = 12f
+            isChecked = prefs.getBoolean(OverlayService.KEY_MOUSE_MODE_ENABLED, true)
+            setOnCheckedChangeListener { v, checked ->
+                if (v.isPressed) {
+                    prefs.edit().putBoolean(OverlayService.KEY_MOUSE_MODE_ENABLED, checked).apply()
+                    restartOverlay()
+                }
+            }
+        }
+        mouseToggleCard.addView(cbMouseMode)
+        tabHeadMouseContent.addView(mouseToggleCard)
+        tabHeadMouseContent.addView(gap())
+
+        // Card: Head Cursor Sensitivity
+        val tuningCard = card("⚡ HEAD CURSOR SENSITIVITY", GREEN)
+        val currentSens = prefs.getFloat(OverlayService.KEY_HEAD_SENSITIVITY, 0.45f)
+        val sensLabel = label("Head Sensitivity: ${String.format("%.2f", currentSens)}x", YELLOW, 11f)
+        tuningCard.addView(sensLabel)
+
+        val sensSeekBar = SeekBar(this).apply {
+            max = 100
+            progress = (((currentSens - 0.1f) / (4.0f - 0.1f)) * 100).toInt().coerceIn(0, 100)
+
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
+                    val sensCalc = 0.1f + (p / 100.0f) * (4.0f - 0.1f)
+                    sensLabel.text = "Head Sensitivity: ${String.format("%.2f", sensCalc)}x"
+                }
+                override fun onStartTrackingTouch(s: SeekBar?) {}
+                override fun onStopTrackingTouch(s: SeekBar?) {
+                    val p = s?.progress ?: 50
+                    val sensCalc = 0.1f + (p / 100.0f) * (4.0f - 0.1f)
+                    prefs.edit().putFloat(OverlayService.KEY_HEAD_SENSITIVITY, sensCalc).apply()
+                }
+            })
+        }
+        tuningCard.addView(sensSeekBar)
+        tabHeadMouseContent.addView(tuningCard)
+        tabHeadMouseContent.addView(gap())
+
+        // Card: Head Movement Strategy
+        val strategyCard = card("🎮 HEAD MOVEMENT STRATEGY", GREEN)
+        val strategies = listOf(
+            OverlayService.STRATEGY_LINEAR     to "Linear (Direct 1:1)",
+            OverlayService.STRATEGY_LOG        to "Logarithmic (Micro-Precision & Fast Sweep)",
+            OverlayService.STRATEGY_NLOG       to "Negative Log (Exponential Power Curve)",
+            OverlayService.STRATEGY_FILTERED   to "Filtered (1€ Adaptive Low-Pass Jitter Filter)",
+            OverlayService.STRATEGY_DERIVATIVE to "Derivative (Velocity Acceleration Gain)"
+        )
+        val currentStrategy = prefs.getString(OverlayService.KEY_MOVEMENT_STRATEGY, OverlayService.STRATEGY_LINEAR)
+            ?: OverlayService.STRATEGY_LINEAR
+        val rgStrategy = radioGroup(strategies, currentStrategy) { chosen ->
+            prefs.edit().putString(OverlayService.KEY_MOVEMENT_STRATEGY, chosen).apply()
+            restartOverlay()
+        }
+        strategyCard.addView(rgStrategy)
+        tabHeadMouseContent.addView(strategyCard)
+        tabHeadMouseContent.addView(gap())
+
+        // Card: Volume Buttons Action Mapper
+        val mapperCard = card("🕹️ VOLUME BUTTONS ACTION MAPPER", YELLOW)
+        val pressActions = listOf(
+            OverlayService.ACTION_VAL_LEFT_CLICK  to "Execute Left Click",
+            OverlayService.ACTION_VAL_RIGHT_CLICK to "Execute Right Click"
+        )
+
+        mapperCard.addView(label("Volume Up Press Action:", YELLOW, 11f))
+        val rgUp = radioGroup(pressActions,
+            prefs.getString(OverlayService.KEY_VOL_UP_ACTION, OverlayService.ACTION_VAL_LEFT_CLICK) ?: "") { chosen ->
+            prefs.edit().putString(OverlayService.KEY_VOL_UP_ACTION, chosen).apply()
+            restartOverlay()
+        }
+        mapperCard.addView(rgUp)
+        mapperCard.addView(gap())
+
+        mapperCard.addView(label("Volume Down Press Action:", YELLOW, 11f))
+        val rgDown = radioGroup(pressActions,
+            prefs.getString(OverlayService.KEY_VOL_DOWN_ACTION, OverlayService.ACTION_VAL_RIGHT_CLICK) ?: "") { chosen ->
+            prefs.edit().putString(OverlayService.KEY_VOL_DOWN_ACTION, chosen).apply()
+            restartOverlay()
+        }
+        mapperCard.addView(rgDown)
+        mapperCard.addView(gap())
+
+        val holdActions = listOf(
+            OverlayService.ACTION_VAL_SCROLL to "Vertical Head Scroll (Hold + Tilt Head)",
+            OverlayService.ACTION_VAL_NONE   to "None (disabled)"
+        )
+        mapperCard.addView(label("Volume Down Hold Action:", YELLOW, 11f))
+        val rgHold = radioGroup(holdActions,
+            prefs.getString(OverlayService.KEY_VOL_DOWN_HOLD_ACTION, OverlayService.ACTION_VAL_SCROLL) ?: "") { chosen ->
+            prefs.edit().putString(OverlayService.KEY_VOL_DOWN_HOLD_ACTION, chosen).apply()
+            restartOverlay()
+        }
+        mapperCard.addView(rgHold)
+        tabHeadMouseContent.addView(mapperCard)
+        root.addView(tabHeadMouseContent)
+
+        // ══════════════════════════════════════════════════════════════════════
+        // ── TAB 2: DIAGNOSE CONTENT ───────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        tabDiagnoseContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            visibility = View.GONE
+        }
+
+        // Card: Permissions
+        val accessCard = card("⚡ UPFRONT SYSTEM ACCESS STATUS", GREEN)
+        btnPermissionStatus = btn("🔄 SCAN & ACQUIRE ALL REQUIRED PERMISSIONS", GREEN) {
+            checkAndRequestAllPermissions(forceTrigger = true)
+        }
+        accessCard.addView(btnPermissionStatus)
+        tabDiagnoseContent.addView(accessCard)
+        tabDiagnoseContent.addView(gap())
+
+        // Card: Diagnostics & Log Console
+        val devCard = card("👓 XREAL 1s DIAGNOSTICS & SYSTEM MONITOR", GREEN)
+        devCard.addView(btn("🔎 OPEN FULL DIAGNOSTICS & SYSTEM LOGS", GREEN) {
+            startActivity(Intent(this, DiagnosticsActivity::class.java))
+        })
+        tabDiagnoseContent.addView(devCard)
+        root.addView(tabDiagnoseContent)
+
+        // Initialize active tab styling
+        switchTab(0)
 
         val sv = ScrollView(this).apply { addView(root) }
         setContentView(sv)
@@ -322,6 +377,24 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
             startOverlayService()
         }
+    }
+
+    private fun switchTab(tabIndex: Int) {
+        activeTab = tabIndex
+
+        tabHudContent.visibility       = if (tabIndex == 0) View.VISIBLE else View.GONE
+        tabHeadMouseContent.visibility = if (tabIndex == 1) View.VISIBLE else View.GONE
+        tabDiagnoseContent.visibility  = if (tabIndex == 2) View.VISIBLE else View.GONE
+
+        // Update tab button highlight colors
+        btnTabHud.setBackgroundColor(Color.parseColor(if (tabIndex == 0) YELLOW else DIM))
+        btnTabHud.setTextColor(if (tabIndex == 0) Color.BLACK else Color.parseColor(YELLOW))
+
+        btnTabHeadMouse.setBackgroundColor(Color.parseColor(if (tabIndex == 1) CYAN else DIM))
+        btnTabHeadMouse.setTextColor(if (tabIndex == 1) Color.BLACK else Color.parseColor(CYAN))
+
+        btnTabDiagnose.setBackgroundColor(Color.parseColor(if (tabIndex == 2) GREEN else DIM))
+        btnTabDiagnose.setTextColor(if (tabIndex == 2) Color.BLACK else Color.parseColor(GREEN))
     }
 
     override fun onDestroy() {
