@@ -30,29 +30,68 @@ import android.widget.FrameLayout
  */
 class CrosshairView(context: Context) : View(context) {
 
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val cyanPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#00E5FF")  // neon cyan
         strokeWidth = 2.5f
         style = Paint.Style.STROKE
         setShadowLayer(6f, 0f, 0f, Color.parseColor("#CC00FFFF"))  // cyan glow
     }
 
+    private val yellowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#FFE600")  // neon yellow for Middle Mouse Pan
+        strokeWidth = 2.5f
+        style = Paint.Style.STROKE
+        setShadowLayer(8f, 0f, 0f, Color.parseColor("#CCFFE600"))  // yellow glow
+    }
+
+    private val fillYellowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#FFE600")
+        style = Paint.Style.FILL
+        setShadowLayer(6f, 0f, 0f, Color.parseColor("#CCFFE600"))
+    }
+
     // crosshair geometry (dp-independent, sized in pixels at draw time)
     private val gap   = 7f   // empty center radius
     private val arm   = 16f  // arm length beyond gap
+
+    var isScrollMode: Boolean = false
+        set(value) {
+            field = value
+            postInvalidate()
+        }
 
     override fun onDraw(canvas: Canvas) {
         val cx = width  / 2f
         val cy = height / 2f
 
-        // horizontal left arm
-        canvas.drawLine(cx - gap - arm, cy, cx - gap, cy, paint)
-        // horizontal right arm
-        canvas.drawLine(cx + gap, cy, cx + gap + arm, cy, paint)
-        // vertical top arm
-        canvas.drawLine(cx, cy - gap - arm, cx, cy - gap, paint)
-        // vertical bottom arm
-        canvas.drawLine(cx, cy + gap, cx, cy + gap + arm, paint)
+        if (!isScrollMode) {
+            // Standard open crosshair: 4 arms with empty center gap
+            canvas.drawLine(cx - gap - arm, cy, cx - gap, cy, cyanPaint)
+            canvas.drawLine(cx + gap, cy, cx + gap + arm, cy, cyanPaint)
+            canvas.drawLine(cx, cy - gap - arm, cx, cy - gap, cyanPaint)
+            canvas.drawLine(cx, cy + gap, cx, cy + gap + arm, cyanPaint)
+        } else {
+            // Middle Mouse Pan-Scroll Icon: Central dot + top (▲) and bottom (▼) arrows in neon yellow
+            canvas.drawCircle(cx, cy, 3.5f, fillYellowPaint)
+
+            // Top arrow
+            canvas.drawLine(cx, cy - 7f, cx, cy - 18f, yellowPaint)
+            val topPath = Path().apply {
+                moveTo(cx - 5f, cy - 13f)
+                lineTo(cx, cy - 19f)
+                lineTo(cx + 5f, cy - 13f)
+            }
+            canvas.drawPath(topPath, yellowPaint)
+
+            // Bottom arrow
+            canvas.drawLine(cx, cy + 7f, cx, cy + 18f, yellowPaint)
+            val bottomPath = Path().apply {
+                moveTo(cx - 5f, cy + 13f)
+                lineTo(cx, cy + 19f)
+                lineTo(cx + 5f, cy + 13f)
+            }
+            canvas.drawPath(bottomPath, yellowPaint)
+        }
     }
 }
 
@@ -137,8 +176,9 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                     val x = intent.getFloatExtra(EXTRA_X, 960f)
                     val y = intent.getFloatExtra(EXTRA_Y, 540f)
                     val isRight = intent.getBooleanExtra(EXTRA_IS_RIGHT, false)
-                    log("RECEIVER_CLICK: Executing mapped click at coordinate ($x, $y) isRight=$isRight")
-                    performSystemClick(x, y, isRight)
+                    val forceTouch = intent.getBooleanExtra(EXTRA_FORCE_TOUCH, false)
+                    log("RECEIVER_CLICK: Executing mapped click at coordinate ($x, $y) isRight=$isRight forceTouch=$forceTouch")
+                    performSystemClick(x, y, isRight, forceTouch)
                 }
                 ACTION_PERFORM_SCROLL -> {
                     val x = intent.getFloatExtra(EXTRA_X, 960f)
@@ -202,6 +242,14 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         log("HeadCursorAccessibilityService connected and ready.")
     }
 
+    private var cursorCrosshairView: CrosshairView? = null
+
+    fun setScrollModeUI(isScroll: Boolean) {
+        mainHandler.post {
+            cursorCrosshairView?.isScrollMode = isScroll
+        }
+    }
+
     fun setupCrosshairOverlay() {
         mainHandler.post {
             try {
@@ -226,6 +274,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
                 val crosshair = CrosshairView(this)
                 // Enable software layer so setShadowLayer works on canvas draws
                 crosshair.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+                cursorCrosshairView = crosshair
 
                 val cvParams = FrameLayout.LayoutParams(sizePx, sizePx)
                 container.addView(crosshair, cvParams)
@@ -296,7 +345,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
 
     // ── Click & Scroll strategies ─────────────────────────────────────────────
 
-    private fun performSystemClick(x: Float, y: Float, isRightClick: Boolean) {
+    private fun performSystemClick(x: Float, y: Float, isRightClick: Boolean, forceTouch: Boolean = false) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
 
         val now = System.currentTimeMillis()
@@ -310,7 +359,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         val clickEngine = prefs.getString(OverlayService.KEY_CLICK_ENGINE, OverlayService.CLICK_ENGINE_TOUCH)
             ?: OverlayService.CLICK_ENGINE_TOUCH
 
-        if (!isRightClick && clickEngine == OverlayService.CLICK_ENGINE_NODE && tryNodeClick(x, y)) {
+        if (!forceTouch && !isRightClick && clickEngine == OverlayService.CLICK_ENGINE_NODE && tryNodeClick(x, y)) {
             return
         }
 
@@ -326,7 +375,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         }.build()
 
         val handled = dispatchGesture(gesture, null, null)
-        log("ACCESSIBILITY: Dispatched $duration ms touch tap at ($x, $y) on displayId=$targetDisplayId → result=$handled")
+        log("ACCESSIBILITY: Dispatched ${if (forceTouch) "TOUCH SIMULATION " else ""}$duration ms touch tap at ($x, $y) on displayId=$targetDisplayId → result=$handled")
     }
 
     private fun performSystemDrag(fromX: Float, fromY: Float, toX: Float, toY: Float) {
@@ -583,6 +632,7 @@ class HeadCursorAccessibilityService : AccessibilityService() {
         const val EXTRA_X = "extra_x"
         const val EXTRA_Y = "extra_y"
         const val EXTRA_IS_RIGHT = "extra_is_right"
+        const val EXTRA_FORCE_TOUCH = "extra_force_touch"
         const val EXTRA_SCROLL_DELTA_Y = "extra_scroll_delta_y"
 
         const val EXTRA_FROM_X = "extra_from_x"

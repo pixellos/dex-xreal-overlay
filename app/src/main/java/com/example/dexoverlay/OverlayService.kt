@@ -241,14 +241,16 @@ class OverlayService : Service() {
                         scrollAnchorX = cursorX
                         scrollAnchorY = cursorY
                         pitchOffset = 0f
+                        HeadCursorAccessibilityService.instance?.setScrollModeUI(true)
                         handler.removeCallbacks(continuousScrollRunnable)
                         handler.post(continuousScrollRunnable)
-                        LogBuffer.add("OVERLAY: Trackpad Scroll Mode ACTIVATED at anchor ($scrollAnchorX, $scrollAnchorY)")
+                        LogBuffer.add("OVERLAY: Middle Mouse Pan Scroll Mode ACTIVATED at anchor ($scrollAnchorX, $scrollAnchorY)")
                     } else if (!newScrollState && isScrollModeActive) {
                         isScrollModeActive = false
                         pitchOffset = 0f
+                        HeadCursorAccessibilityService.instance?.setScrollModeUI(false)
                         handler.removeCallbacks(continuousScrollRunnable)
-                        LogBuffer.add("OVERLAY: Trackpad Scroll Mode DEACTIVATED")
+                        LogBuffer.add("OVERLAY: Middle Mouse Pan Scroll Mode DEACTIVATED")
                     }
                 }
                 HeadCursorAccessibilityService.ACTION_DRAG_MODE_CHANGED -> {
@@ -429,6 +431,16 @@ class OverlayService : Service() {
                         putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
                         putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
                         putExtra(HeadCursorAccessibilityService.EXTRA_IS_RIGHT, false)
+                    }
+                    sendBroadcast(clickIntent)
+                }
+                ACTION_VAL_TOUCH_TAP -> {
+                    val clickIntent = Intent(HeadCursorAccessibilityService.ACTION_PERFORM_CLICK).apply {
+                        setPackage(packageName)
+                        putExtra(HeadCursorAccessibilityService.EXTRA_X, cursorX)
+                        putExtra(HeadCursorAccessibilityService.EXTRA_Y, cursorY)
+                        putExtra(HeadCursorAccessibilityService.EXTRA_IS_RIGHT, false)
+                        putExtra(HeadCursorAccessibilityService.EXTRA_FORCE_TOUCH, true)
                     }
                     sendBroadcast(clickIntent)
                 }
@@ -621,6 +633,7 @@ class OverlayService : Service() {
         const val CLICK_ENGINE_NODE  = "NODE_CLICK"
 
         const val ACTION_VAL_LEFT_CLICK = "LEFT_CLICK"
+        const val ACTION_VAL_TOUCH_TAP = "TOUCH_TAP"
         const val ACTION_VAL_RIGHT_CLICK = "RIGHT_CLICK"
         const val ACTION_VAL_SCROLL = "SCROLL"
         const val ACTION_VAL_HOME = "HOME"

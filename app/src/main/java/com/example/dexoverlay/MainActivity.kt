@@ -298,13 +298,14 @@ class MainActivity : Activity() {
 
         // Card: Volume Buttons Action Mapper
         val mapperCard = card("🕹️ VOLUME BUTTONS ACTION MAPPER", YELLOW)
-        val pressActions = listOf(
-            OverlayService.ACTION_VAL_LEFT_CLICK  to "Execute Left Click",
+        val pressActionsVolUp = listOf(
+            OverlayService.ACTION_VAL_LEFT_CLICK  to "Execute Left Click (Node or Touch)",
+            OverlayService.ACTION_VAL_TOUCH_TAP   to "Simulate Touch Tap (Touch Gesture API)",
             OverlayService.ACTION_VAL_RIGHT_CLICK to "Execute Right Click"
         )
 
         mapperCard.addView(label("Volume Up Press Action:", YELLOW, 11f))
-        val rgUp = radioGroup(pressActions,
+        val rgUp = radioGroup(pressActionsVolUp,
             prefs.getString(OverlayService.KEY_VOL_UP_ACTION, OverlayService.ACTION_VAL_LEFT_CLICK) ?: "") { chosen ->
             prefs.edit().putString(OverlayService.KEY_VOL_UP_ACTION, chosen).apply()
             restartOverlay()
@@ -312,26 +313,19 @@ class MainActivity : Activity() {
         mapperCard.addView(rgUp)
         mapperCard.addView(gap())
 
-        mapperCard.addView(label("Volume Down Press Action:", YELLOW, 11f))
-        val rgDown = radioGroup(pressActions,
-            prefs.getString(OverlayService.KEY_VOL_DOWN_ACTION, OverlayService.ACTION_VAL_RIGHT_CLICK) ?: "") { chosen ->
-            prefs.edit().putString(OverlayService.KEY_VOL_DOWN_ACTION, chosen).apply()
-            restartOverlay()
-        }
-        mapperCard.addView(rgDown)
-        mapperCard.addView(gap())
-
-        val holdActions = listOf(
-            OverlayService.ACTION_VAL_SCROLL to "Vertical Head Scroll (Hold + Tilt Head)",
-            OverlayService.ACTION_VAL_NONE   to "None (disabled)"
+        val pressActionsVolDown = listOf(
+            OverlayService.ACTION_VAL_SCROLL      to "Toggle Middle Mouse Pan Scroll Mode (Single Click)",
+            OverlayService.ACTION_VAL_RIGHT_CLICK to "Execute Right Click",
+            OverlayService.ACTION_VAL_LEFT_CLICK  to "Execute Left Click"
         )
-        mapperCard.addView(label("Volume Down Hold Action:", YELLOW, 11f))
-        val rgHold = radioGroup(holdActions,
+
+        mapperCard.addView(label("Volume Down Single Click Action:", YELLOW, 11f))
+        val rgDown = radioGroup(pressActionsVolDown,
             prefs.getString(OverlayService.KEY_VOL_DOWN_HOLD_ACTION, OverlayService.ACTION_VAL_SCROLL) ?: "") { chosen ->
             prefs.edit().putString(OverlayService.KEY_VOL_DOWN_HOLD_ACTION, chosen).apply()
             restartOverlay()
         }
-        mapperCard.addView(rgHold)
+        mapperCard.addView(rgDown)
         tabHeadMouseContent.addView(mapperCard)
         root.addView(tabHeadMouseContent)
 
